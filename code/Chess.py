@@ -93,7 +93,7 @@ class chessBoard(object):
                 ax.yaxis.set_visible(False)
                 ax.axes.set_facecolor('none')
 
-                imdat = ax.imshow(IMAGE_BLANK)
+                imdat = ax.imshow(IMAGE_BLANK, origin='upper')
 
                 rank.update({FILES[i_file]:imdat})
 
