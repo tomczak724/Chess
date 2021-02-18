@@ -4,6 +4,7 @@ import time
 import numpy
 import pandas
 import imageio
+import matplotlib
 from matplotlib import pyplot
 
 
@@ -51,6 +52,7 @@ class chessBoard(object):
                               2:{'a':'P', 'b':'P', 'c':'P', 'd':'P', 'e':'P', 'f':'P', 'g':'P', 'h':'P'}, 
                               1:{'a':'R', 'b':'N', 'c':'B', 'd':'Q', 'e':'K', 'f':'B', 'g':'N', 'h':'R'}}]
 
+
         ###  setting up lists of legal moves
         self.legal_moves = self.get_legal_moves()
         self.previous_move = {'player':'', 'move':''}
@@ -88,7 +90,7 @@ class chessBoard(object):
         for i_rank, y0 in enumerate(numpy.arange(0.05, 0.98, 0.93/8)):
             rank = {}
             for i_file, x0 in enumerate(numpy.arange(0.05, 0.98, 0.93/8)):
-                ax = self.fig.add_axes([x0, y0, 0.93/8, 0.93/8])
+                ax = self.fig.add_axes([x0, y0, 0.93/8, 0.93/8], label='%s%i'%(FILES[i_file], RANKS[i_rank]))
                 ax.xaxis.set_visible(False)
                 ax.yaxis.set_visible(False)
                 ax.axes.set_facecolor('none')
@@ -106,6 +108,45 @@ class chessBoard(object):
                     self.image_board[r][f].set_data(PIECES_WHITE[self.chess_boards[-1][r][f]])
                 if self.chess_boards[-1][r][f] in PIECES_BLACK.keys():
                     self.image_board[r][f].set_data(PIECES_BLACK[self.chess_boards[-1][r][f]])
+
+
+
+        ###  instantiating interactive variables
+        self.selected_square = None
+
+        cid = self.fig.canvas.mpl_connect('button_press_event', self._onClick)
+
+
+    def _onClick(self, event):
+
+        if (event.inaxes is not None):
+
+            f = event.inaxes.get_label()[0]
+            r = int(event.inaxes.get_label()[1])
+
+            ###  if clicked square is the currently-selected square, 
+            ###  unhighlight all squares and reset selected_square
+            if self.selected_square == '%s%i' % (f, r):
+                self.selected_square = None
+                for r in RANKS:
+                    for f in FILES:
+                        self.image_board[r][f].axes.set_facecolor('none')
+                return
+
+
+
+
+            ###  checking if square is occupied
+            self.selected_square = event.inaxes.get_label()
+            board = copy.deepcopy(self.chess_boards[-1])
+
+
+            if board[r][f] == 'P':
+                moves = self.get_pawn_moves(f, r, 'white', board)
+
+
+
+
 
 
 
