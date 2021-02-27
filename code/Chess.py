@@ -81,8 +81,8 @@ class chessBoard(object):
             self.ax.axhline(i+2.5, color='k', lw=1)
             self.ax.axvline(i+2.5, color='k', lw=1)
             for j in range(0, 8, 2):
-                self.ax.fill_between([i+0.5, i+1.5], j+0.5, j+1.5, color='k', alpha=0.2)
-                self.ax.fill_between([i+1.5, i+2.5], j+1.5, j+2.5, color='k', alpha=0.2)
+                self.ax.fill_between([i+0.5, i+1.5], j+0.5, j+1.5, color='k', alpha=0.25)
+                self.ax.fill_between([i+1.5, i+2.5], j+1.5, j+2.5, color='k', alpha=0.25)
 
 
         ###  setting up board of axes subplots
@@ -121,16 +121,17 @@ class chessBoard(object):
 
         if (event.inaxes is not None):
 
+            ###  unhighlight all squares
+            for r in RANKS:
+                for f in FILES:
+                    self.image_board[r][f].axes.set_facecolor('none')
+
+            ###  if clicked square is the currently-selected square then truncate
             f = event.inaxes.get_label()[0]
             r = int(event.inaxes.get_label()[1])
-
-            ###  if clicked square is the currently-selected square, 
-            ###  unhighlight all squares and reset selected_square
             if self.selected_square == '%s%i' % (f, r):
                 self.selected_square = None
-                for r in RANKS:
-                    for f in FILES:
-                        self.image_board[r][f].axes.set_facecolor('none')
+                self._redraw_board()
                 return
 
 
@@ -140,11 +141,61 @@ class chessBoard(object):
             self.selected_square = event.inaxes.get_label()
             board = copy.deepcopy(self.chess_boards[-1])
 
+            moves = []
 
             if board[r][f] == 'P':
                 moves = self.get_pawn_moves(f, r, 'white', board)
 
+            elif board[r][f] == 'p':
+                moves = self.get_pawn_moves(f, r, 'black', board)
 
+            elif board[r][f] == 'N':
+                moves = self.get_knight_moves(f, r, 'white', board)
+
+            elif board[r][f] == 'n':
+                moves = self.get_knight_moves(f, r, 'black', board)
+
+            elif board[r][f] == 'B':
+                moves = self.get_bishop_moves(f, r, 'white', board)
+
+            elif board[r][f] == 'b':
+                moves = self.get_bishop_moves(f, r, 'black', board)
+
+            elif board[r][f] == 'R':
+                moves = self.get_rook_moves(f, r, 'white', board)
+
+            elif board[r][f] == 'r':
+                moves = self.get_rook_moves(f, r, 'black', board)
+
+            elif board[r][f] == 'Q':
+                moves = self.get_queen_moves(f, r, 'white', board)
+
+            elif board[r][f] == 'q':
+                moves = self.get_queen_moves(f, r, 'black', board)
+
+            elif board[r][f] == 'K':
+                moves = self.get_king_moves(f, r, 'white', board)
+
+            elif board[r][f] == 'k':
+                moves = self.get_king_moves(f, r, 'black', board)
+
+
+            ###  highlighting squares
+            for move in moves:
+
+                m = move.strip('+').strip('#')
+                if '=' in m:
+                    m = m[:m.index('=')]
+
+                f = m[-2]
+                r = int(m[-1])
+
+                if (r + FILES.index(f)) % 2 == 1:
+                    self.image_board[r][f].axes.set_facecolor('#ff8080')
+                else:
+                    self.image_board[r][f].axes.set_facecolor('#ff9999')
+
+            self._redraw_board()
 
 
 
