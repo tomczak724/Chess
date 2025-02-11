@@ -56,8 +56,7 @@ class chessBoard(object):
         ###  setting up lists of legal moves
         self.legal_moves = self.get_legal_moves()
         self.previous_move = {'player':'', 'move':''}
-
-        self.castle_status = {'white':None, 'black':None}
+        self.castle_rights = 'KQkq'
 
 
         ###  initializing figure
@@ -198,10 +197,6 @@ class chessBoard(object):
             self._redraw_board()
 
 
-
-
-
-
     def load_pgn(self):
 
         ###  reading and parsing PGN text
@@ -219,6 +214,65 @@ class chessBoard(object):
             return pandas.DataFrame(numpy.array(list_moves).reshape((int(len(list_moves)/3), 3)), columns=['turn', 'white', 'black'])
 
 
+    def get_fen(self, position=0):
+
+        #r3k2r/3n1p1p/p3p1p1/1b1pP3/2nP1P2/2qB1Q1P/2P1N1PK/R1B2R2 b kq - 4 22
+
+        board = self.chess_boards[position]
+
+        ###  adding peice locations to FEN string
+        fen = ''
+        n_vacant_files = 0
+        for r in RANKS[::-1]:
+
+            n_vacant = 0
+            for f in FILES:
+
+                ###  if square is empty, increment vacant count
+                if board[r][f] == ' ':
+                    n_vacant += 1
+
+                else:
+                    ###  if n_vacant is not 0, add to FEN string
+                    if n_vacant > 0:
+                        fen += '%i' % n_vacant
+                        n_vacant = 0
+
+                    ###  add piece to FEN string
+                    fen += board[r][f]
+
+            if n_vacant > 0:
+                fen += '%i' % n_vacant
+
+            if r > 1:
+                fen += '/'
+
+        ###  adding next player to FEN string
+        fen += ' %s ' % self.current_player[0]
+
+        ###  adding castling rights to FEN string
+        fen += ' %s ' % self.castle_rights
+
+        ###  adding available en passant target
+        if position > 0:
+            board_prev = self.chess_boards[position-1]
+
+            ###  identifying which piece moved between which squares
+            ###  NOTE: Castling will produce 4 differences
+            ###        En Passant will produce 3 differences
+            ###        All other will produce 2 differences
+            diffs = []
+            for r in RANKS:
+                for f in FILES:
+                    if board[r][f] != board_prev[r][f]:
+                        diffs.append('%s%i' % (f, r))
+
+
+
+
+
+
+
     def next(self, n=1):
 
         for i in range(n):
@@ -229,13 +283,13 @@ class chessBoard(object):
                             redraw=True)
 
             if self.current_player == 'white':
-                self.current_player = 'black'
                 self.previous_move['player'] = 'white'
                 self.previous_move['move'] = self.df_moves.query('turn=="%s"'%self.current_move)[self.current_player].iloc[0]
+                self.current_player = 'black'
             else:
                 self.current_player = 'white'
-                self.previous_move['player'] = 'black'
                 self.previous_move['move'] = self.df_moves.query('turn=="%s"'%self.current_move)[self.current_player].iloc[0]
+                self.previous_move['player'] = 'black'
                 self.current_move += 1
 
             print('evaluation = %i' % self.evaluate(self.current_player))
