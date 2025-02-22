@@ -1,4 +1,5 @@
 
+import pdb
 import copy
 import time
 import numpy
@@ -39,7 +40,7 @@ class chessBoard(object):
         self.pgn_file = pgn_file
         if self.pgn_file is not None:
             self.df_pgn = self.load_pgn()
-            self.current_player = 'white'
+            self.player_on_move = 'white'
             self.current_move = 1
 
         ###  setting up chess board and pieces
@@ -54,13 +55,15 @@ class chessBoard(object):
 
 
         ###  setting up lists of legal moves
-        self.legal_moves = self.get_legal_moves()
-        self.previous_move = {'player':'', 'move':''}
-        self.castle_rights = 'KQkq'
-
         self.df_moves = pandas.DataFrame(columns=['player', 'notation', 'piece', 'start_square', 'end_square', 'capture_flag', 'check_flag', 'fen_board_position', 'ep_target', 'castle_rights', 'halfmove_count'])
         self.halfmove_count = 0
         self.fens = ['rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1']
+
+        self.legal_moves = self.get_legal_moves()
+        self.player_on_move = 'white'
+        self.possible_moves = pandas.DataFrame()
+        self.previous_move = {'player':'', 'move':''}
+        self.castle_rights = 'KQkq'
 
 
         ###  initializing figure
@@ -141,62 +144,67 @@ class chessBoard(object):
                 for f in FILES:
                     self.image_board[r][f].axes.set_facecolor('none')
 
+
             ###  if clicked square is the currently-selected square then truncate
             f = event.inaxes.get_label()[0]
             r = int(event.inaxes.get_label()[1])
-            if self.selected_square == '%s%i' % (f, r):
+            clicked_square = '%s%i' % (f, r)
+            if clicked_square == self.selected_square:
                 self.selected_square = None
+                self.possible_moves = pandas.DataFrame()
                 self._redraw_board()
                 return
 
-            ###  checking if square is occupied
-            self.selected_square = event.inaxes.get_label()
-            print('\nselected_square = %s' % self.selected_square)
-            board = copy.deepcopy(self.chess_boards[-1])
 
-            moves = []
+            ###  moving piece if clicked square is in list of possible moves
+            if (len(self.possible_moves) > 0) and (clicked_square in self.possible_moves['end_square'].tolist()):
 
-            if board[r][f] == 'P':
-                moves = self.get_pawn_moves(f, r, 'white', board)
+                move_text = self.possible_moves.query('end_square=="%s"'%clicked_square).iloc[0]['notation']
+                self.move_piece(move_text, self.player_on_move, board=None, redraw=True)
 
-            elif board[r][f] == 'p':
-                moves = self.get_pawn_moves(f, r, 'black', board)
+                self.selected_square = None
+                self.possible_moves = pandas.DataFrame()
 
-            elif board[r][f] == 'N':
-                moves = self.get_knight_moves(f, r, 'white', board)
-
-            elif board[r][f] == 'n':
-                moves = self.get_knight_moves(f, r, 'black', board)
-
-            elif board[r][f] == 'B':
-                moves = self.get_bishop_moves(f, r, 'white', board)
-
-            elif board[r][f] == 'b':
-                moves = self.get_bishop_moves(f, r, 'black', board)
-
-            elif board[r][f] == 'R':
-                moves = self.get_rook_moves(f, r, 'white', board)
-
-            elif board[r][f] == 'r':
-                moves = self.get_rook_moves(f, r, 'black', board)
-
-            elif board[r][f] == 'Q':
-                moves = self.get_queen_moves(f, r, 'white', board)
-
-            elif board[r][f] == 'q':
-                moves = self.get_queen_moves(f, r, 'black', board)
-
-            elif board[r][f] == 'K':
-                moves = self.get_king_moves(f, r, 'white', board)
-
-            elif board[r][f] == 'k':
-                moves = self.get_king_moves(f, r, 'black', board)
+                if self.player_on_move == 'white':
+                    self.player_on_move = 'black'
+                else:
+                    self.player_on_move = 'white'
 
 
-            ###  highlighting squares
-            for move in moves:
-                f, r = move['end_square'][0], int(move['end_square'][1])
-                self.image_board[r][f].axes.set_facecolor('#ff9999')
+            ###  if selecting a piece, get legal moves
+            else:
+
+                self.selected_square = event.inaxes.get_label()
+                board = copy.deepcopy(self.chess_boards[-1])
+
+                moves = []
+                occupant = board[r][f]
+
+                if occupant.lower() == 'p':
+                    moves = self.get_pawn_moves(f, r, self.player_on_move, board)
+
+                elif occupant.lower() == 'n':
+                    moves = self.get_knight_moves(f, r, self.player_on_move, board)
+
+                elif occupant.lower() == 'b':
+                    moves = self.get_bishop_moves(f, r, self.player_on_move, board)
+
+                elif occupant.lower() == 'r':
+                    moves = self.get_rook_moves(f, r, self.player_on_move, board)
+
+                elif occupant.lower() == 'q':
+                    moves = self.get_queen_moves(f, r, self.player_on_move, board)
+
+                elif occupant.lower() == 'k':
+                    moves = self.get_king_moves(f, r, self.player_on_move, board)
+
+                self.possible_moves = pandas.DataFrame(moves)
+
+                ###  highlighting squares for player on move
+                if (self.player_on_move == 'white' and occupant in PIECES_WHITE.keys()) or ((self.player_on_move == 'black' and occupant in PIECES_BLACK.keys())):
+                    for move in moves:
+                        f, r = move['end_square'][0], int(move['end_square'][1])
+                        self.image_board[r][f].axes.set_facecolor('#ff9999')
 
             self._redraw_board()
 
@@ -252,7 +260,7 @@ class chessBoard(object):
                 fen += '/'
 
         ###  adding next player to FEN string
-        fen += ' %s ' % self.current_player[0]
+        fen += ' %s ' % self.player_on_move[0]
 
         ###  adding castling rights to FEN string
         fen += ' %s ' % self.castle_rights
@@ -318,23 +326,23 @@ class chessBoard(object):
         for i in range(n):
 
             if verbose is True:
-                print(self.df_pgn.query('turn=="%s"'%self.current_move)[self.current_player].iloc[0])
-            self.move_piece(self.df_pgn.query('turn=="%s"'%self.current_move)[self.current_player].iloc[0], 
-                            self.current_player, 
+                print(self.df_pgn.query('turn=="%s"'%self.current_move)[self.player_on_move].iloc[0])
+            self.move_piece(self.df_pgn.query('turn=="%s"'%self.current_move)[self.player_on_move].iloc[0], 
+                            self.player_on_move, 
                             redraw=True)
 
-            if self.current_player == 'white':
+            if self.player_on_move == 'white':
                 self.previous_move['player'] = 'white'
-                self.previous_move['move'] = self.df_pgn.query('turn=="%s"'%self.current_move)[self.current_player].iloc[0]
-                self.current_player = 'black'
+                self.previous_move['move'] = self.df_pgn.query('turn=="%s"'%self.current_move)[self.player_on_move].iloc[0]
+                self.player_on_move = 'black'
             else:
-                self.current_player = 'white'
-                self.previous_move['move'] = self.df_pgn.query('turn=="%s"'%self.current_move)[self.current_player].iloc[0]
+                self.player_on_move = 'white'
+                self.previous_move['move'] = self.df_pgn.query('turn=="%s"'%self.current_move)[self.player_on_move].iloc[0]
                 self.previous_move['player'] = 'black'
                 self.current_move += 1
 
             if verbose is True:
-                print('evaluation = %i' % self.evaluate(self.current_player))
+                print('evaluation = %i' % self.evaluate(self.player_on_move))
 
 
     def undo(self, n=1):
@@ -1016,17 +1024,28 @@ class chessBoard(object):
         else:
             piece = 'k'
 
-        ###  identifying starting square
-        f2, r2 = m[1], int(m[2])
-        end_square = m[1:3]
+        ###  if move is fully-disambiguated
+        if len(m) == 5:
+            f1, r1 = m[1], int(m[2])
+            f2, r2 = m[3], int(m[4])
 
-        for r1 in set(RANKS).intersection(set([r2-1, r2, r2+1])):
-            for i_file in set(range(8)).intersection(set([FILES.index(f2)-1, FILES.index(f2), FILES.index(f2)+1])):
-                f1 = FILES[i_file]
-                if board[r1][f1] == piece:
-                    start_square = '%s%i' % (f1, r1)
-                    board[r1][f1] = ' '
+        ###  else identify starting square
+        else:
+            f2, r2 = m[1], int(m[2])
+            found_king = False
+            for r1 in set(RANKS).intersection(set([r2-1, r2, r2+1])):
+                for i_file in set(range(8)).intersection(set([FILES.index(f2)-1, FILES.index(f2), FILES.index(f2)+1])):
+                    f1 = FILES[i_file]
+                    if board[r1][f1] == piece:
+                        found_king = True
+                        break
+                if found_king is True:
+                    break
 
+        ###  relabel start and end squares
+        start_square = '%s%i' % (f1, r1)
+        end_square = '%s%i' % (f2, r2)
+        board[r1][f1] = ' '
         board[r2][f2] = piece
 
         return (board, start_square, end_square)
@@ -1237,35 +1256,60 @@ class chessBoard(object):
 
             ###  checking for captures to higher files
             if (f != 'h') and (board[r+1][FILES[FILES.index(f)+1]] in PIECES_BLACK.keys()):
+                f2 = FILES[FILES.index(f)+1]
                 if promotion == True:
                     for piece in ['Q', 'R', 'B', 'N']:
                         moves_dict.append({'player': 'white', 
                                            'piece': 'pawn', 
-                                           'notation': '%sx%s%i=%s' % (f, FILES[FILES.index(f)+1], r+1, piece), 
+                                           'notation': '%sx%s%i=%s' % (f, f2, r+1, piece), 
                                            'start_square': '%s%i' % (f, r), 
-                                           'end_square': '%s%i' % (FILES[FILES.index(f)+1], r+1)})
+                                           'end_square': '%s%i' % (f2, r+1)})
                 else:
                     moves_dict.append({'player': 'white', 
                                        'piece': 'pawn', 
-                                       'notation': '%sx%s%i' % (f, FILES[FILES.index(f)+1], r+1), 
+                                       'notation': '%sx%s%i' % (f, f2, r+1), 
                                        'start_square': '%s%i' % (f, r), 
-                                       'end_square': '%s%i' % (FILES[FILES.index(f)+1], r+1)})
+                                       'end_square': '%s%i' % (f2, r+1)})
+
+            ###  checking for en passant captures to higher files
+            if (f != 'h') and (len(self.df_moves) > 0):
+                ep_target = self.df_moves.iloc[-1]['ep_target']
+                f2 = FILES[FILES.index(f)+1]
+                if (ep_target != '-') and (r == 5) and (ep_target[1] == '6') and (ep_target[0] == f2):
+                    moves_dict.append({'player': 'white', 
+                                       'piece': 'pawn', 
+                                       'notation': '%sx%s%i' % (f, f2, r+1), 
+                                       'start_square': '%s%i' % (f, r), 
+                                       'end_square': '%s%i' % (f2, r+1)})
 
             ###  checking for captures to lower files
             if (f != 'a') and (board[r+1][FILES[FILES.index(f)-1]] in PIECES_BLACK.keys()):
+                f2 = FILES[FILES.index(f)-1]
                 if promotion == True:
                     for piece in ['Q', 'R', 'B', 'N']:
                         moves_dict.append({'player': 'white', 
                                            'piece': 'pawn', 
-                                           'notation': '%sx%s%i=%s' % (f, FILES[FILES.index(f)-1], r+1, piece), 
+                                           'notation': '%sx%s%i=%s' % (f, f2, r+1, piece), 
                                            'start_square': '%s%i' % (f, r), 
-                                           'end_square': '%s%i' % (FILES[FILES.index(f)-1], r+1)})
+                                           'end_square': '%s%i' % (f2, r+1)})
                 else:
                     moves_dict.append({'player': 'white', 
                                        'piece': 'pawn', 
-                                       'notation': '%sx%s%i' % (f, FILES[FILES.index(f)-1], r+1), 
+                                       'notation': '%sx%s%i' % (f, f2, r+1), 
                                        'start_square': '%s%i' % (f, r), 
-                                       'end_square': '%s%i' % (FILES[FILES.index(f)-1], r+1)})
+                                       'end_square': '%s%i' % (f2, r+1)})
+
+            ###  checking for en passant captures to higher files
+            if (f != 'a') and (len(self.df_moves) > 0):
+                ep_target = self.df_moves.iloc[-1]['ep_target']
+                f2 = FILES[FILES.index(f)-1]
+                if (ep_target != '-') and (r == 5) and (ep_target[1] == '6') and (ep_target[0] == f2):
+                    moves_dict.append({'player': 'white', 
+                                       'piece': 'pawn', 
+                                       'notation': '%sx%s%i' % (f, f2, r+1), 
+                                       'start_square': '%s%i' % (f, r), 
+                                       'end_square': '%s%i' % (f2, r+1)})
+
 
 
         elif player == 'black':
@@ -1302,35 +1346,59 @@ class chessBoard(object):
 
             ###  checking for captures to higher file
             if (f != 'h') and (board[r-1][FILES[FILES.index(f)+1]] in PIECES_WHITE.keys()):
+                f2 = FILES[FILES.index(f)+1]
                 if promotion == True:
                     for piece in ['q', 'r', 'b', 'n']:
                         moves_dict.append({'player': 'black', 
                                            'piece': 'pawn', 
-                                           'notation': '%sx%s%i=%s' % (f, FILES[FILES.index(f)+1], r-1, piece), 
+                                           'notation': '%sx%s%i=%s' % (f, f2, r-1, piece), 
                                            'start_square': '%s%i' % (f, r), 
-                                           'end_square': '%s%i' % (FILES[FILES.index(f)+1], r-1)})
+                                           'end_square': '%s%i' % (f2, r-1)})
                 else:
                     moves_dict.append({'player': 'black', 
                                        'piece': 'pawn', 
-                                       'notation': '%sx%s%i' % (f, FILES[FILES.index(f)+1], r-1), 
+                                       'notation': '%sx%s%i' % (f, f2, r-1), 
                                        'start_square': '%s%i' % (f, r), 
-                                       'end_square': '%s%i' % (FILES[FILES.index(f)+1], r-1)})
+                                       'end_square': '%s%i' % (f2, r-1)})
+
+            ###  checking for en passant captures to higher files
+            if (f != 'h') and (len(self.df_moves) > 0):
+                ep_target = self.df_moves.iloc[-1]['ep_target']
+                f2 = FILES[FILES.index(f)+1]
+                if (ep_target != '-') and (r == 4) and (ep_target[1] == '3') and (ep_target[0] == f2):
+                    moves_dict.append({'player': 'balck', 
+                                       'piece': 'pawn', 
+                                       'notation': '%sx%s%i' % (f, f2, r-1), 
+                                       'start_square': '%s%i' % (f, r), 
+                                       'end_square': '%s%i' % (f2, r-1)})
 
             ###  checking for captures to lower files
             if (f != 'a') and (board[r-1][FILES[FILES.index(f)-1]] in PIECES_WHITE.keys()):
+                f2 = FILES[FILES.index(f)-1]
                 if promotion == True:
                     for piece in ['q', 'r', 'b', 'n']:
                         moves_dict.append({'player': 'black', 
                                            'piece': 'pawn', 
-                                           'notation': '%sx%s%i=%s' % (f, FILES[FILES.index(f)-1], r-1, piece), 
+                                           'notation': '%sx%s%i=%s' % (f, f2, r-1, piece), 
                                            'start_square': '%s%i' % (f, r), 
-                                           'end_square': '%s%i' % (FILES[FILES.index(f)-1], r-1)})
+                                           'end_square': '%s%i' % (f2, r-1)})
                 else:
                     moves_dict.append({'player': 'black', 
                                        'piece': 'pawn', 
-                                       'notation': '%sx%s%i' % (f, FILES[FILES.index(f)-1], r-1), 
+                                       'notation': '%sx%s%i' % (f, f2, r-1), 
                                        'start_square': '%s%i' % (f, r), 
-                                       'end_square': '%s%i' % (FILES[FILES.index(f)-1], r-1)})
+                                       'end_square': '%s%i' % (f2, r-1)})
+
+            ###  checking for en passant captures to lower files
+            if (f != 'a') and (len(self.df_moves) > 0):
+                ep_target = self.df_moves.iloc[-1]['ep_target']
+                f2 = FILES[FILES.index(f)-1]
+                if (ep_target != '-') and (r == 4) and (ep_target[1] == '3') and (ep_target[0] == f2):
+                    moves_dict.append({'player': 'balck', 
+                                       'piece': 'pawn', 
+                                       'notation': '%sx%s%i' % (f, f2, r-1), 
+                                       'start_square': '%s%i' % (f, r), 
+                                       'end_square': '%s%i' % (f2, r-1)})
 
 
         return moves_dict
@@ -1847,6 +1915,37 @@ class chessBoard(object):
                                        'end_square': end_square})
 
         return moves_dict
+
+
+
+
+
+
+
+    def get_attacked_squares(self, board=None):
+
+        if board is None:
+            board = copy.deepcopy(self.chess_boards[-1])
+
+
+        n_attacked_by_white = [{8:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                7:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                6:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                5:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                4:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                3:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                2:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                1:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}}]
+
+        n_attacked_by_black = [{8:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                7:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                6:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                5:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                4:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                3:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                2:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                                1:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}}]
+
 
 
 
