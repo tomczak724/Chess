@@ -58,6 +58,7 @@ class chessBoard(object):
         self.df_moves = pandas.DataFrame(columns=['player', 'notation', 'piece', 'start_square', 'end_square', 'capture_flag', 'check_flag', 'fen_board_position', 'ep_target', 'castle_rights', 'halfmove_count'])
         self.halfmove_count = 0
         self.fens = ['rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1']
+        self.promotion_prompt = False
 
         self.legal_moves = self.get_legal_moves()
         self.player_on_move = 'white'
@@ -67,7 +68,7 @@ class chessBoard(object):
 
 
         ###  initializing figure
-        self.fig, self.ax = pyplot.subplots(figsize=(6, 6))
+        self.fig, self.ax = pyplot.subplots(figsize=(7, 7))
         self.fig.subplots_adjust(left=0.05, top=0.98, right=0.98, bottom=0.05)
         self.ax.axis([0.5, 8.5, 0.5, 8.5])
         self.ax.set_aspect('equal')
@@ -89,7 +90,6 @@ class chessBoard(object):
             for j in range(0, 8, 2):
                 self.ax.fill_between([i+0.5, i+1.5], j+0.5, j+1.5, color='k', alpha=0.25)
                 self.ax.fill_between([i+1.5, i+2.5], j+1.5, j+2.5, color='k', alpha=0.25)
-
 
         ###  setting up board of axes subplots
         self.image_board = {}
@@ -114,7 +114,6 @@ class chessBoard(object):
                     self.image_board[r][f].set_data(PIECES_WHITE[self.chess_boards[-1][r][f]])
                 if self.chess_boards[-1][r][f] in PIECES_BLACK.keys():
                     self.image_board[r][f].set_data(PIECES_BLACK[self.chess_boards[-1][r][f]])
-
 
         ###  iterating over PGN if provided
         if pgn_file is not None:
@@ -153,22 +152,78 @@ class chessBoard(object):
                 self.selected_square = None
                 self.possible_moves = pandas.DataFrame()
                 self._redraw_board()
-                return
+
+
+            ###  handling pawn promotion prompt
+            elif self.promotion_prompt is True:
+
+                if clicked_square in self.promotion_options.keys():
+                    search_str_white = '%s8=%s' % (f, self.promotion_options[clicked_square])
+                    search_str_black = '%s1=%s' % (f, self.promotion_options[clicked_square])
+                    idx_search = self.possible_moves['notation'].apply(lambda row: (search_str_white in row) or (search_str_black in row))
+                    move_text = self.possible_moves.loc[idx_search, 'notation'].iloc[0]
+                    self.move_piece(move_text, self.player_on_move, board=None, redraw=True)
+
+                    self.selected_square = None
+                    self.possible_moves = pandas.DataFrame()
+                    self.promotion_options = {}
+                    self.promotion_prompt = False
+                    self.toggle_transparency('off')
+                    
+                    if self.player_on_move == 'white':
+                        self.player_on_move = 'black'
+                    else:
+                        self.player_on_move = 'white'
 
 
             ###  moving piece if clicked square is in list of possible moves
-            if (len(self.possible_moves) > 0) and (clicked_square in self.possible_moves['end_square'].tolist()):
+            elif (len(self.possible_moves) > 0) and (clicked_square in self.possible_moves['end_square'].tolist()):
 
-                move_text = self.possible_moves.query('end_square=="%s"'%clicked_square).iloc[0]['notation']
-                self.move_piece(move_text, self.player_on_move, board=None, redraw=True)
+                ###  if pawn promotion then prompt for which piece
+                f0, r0 = self.selected_square
+                print('selected_square , clicked_square = %s , %s' % (self.selected_square, clicked_square))
 
-                self.selected_square = None
-                self.possible_moves = pandas.DataFrame()
+                ###  handling promotions for white
+                if (self.chess_boards[-1][int(r0)][f0] == 'P') and (r == 8):
+                    self.promotion_prompt = True
+                    self.promotion_options = {}
+                    self.toggle_transparency('on')
+                    self.image_board[7][f0].set_data(IMAGE_BLANK)
+                    for ri, pi in zip([8, 7, 6, 5], ['Q', 'N', 'R', 'B']):
+                        self.image_board[ri][f].axes.set_facecolor('w')
+                        self.promotion_options.update({'%s%i'%(f, ri): pi})
+                        self.image_board[ri][f].set_data(PIECES_WHITE[pi])
+                        self.image_board[ri][f].set_alpha(1)
+                    pyplot.draw()
 
-                if self.player_on_move == 'white':
-                    self.player_on_move = 'black'
+                ###  handling promotions for black
+                elif (self.chess_boards[-1][int(r0)][f0] == 'p') and (r == 1):
+                    self.promotion_prompt = True
+                    self.promotion_options = {}
+                    self.toggle_transparency('on')
+                    self.image_board[2][f0].set_data(IMAGE_BLANK)
+                    for ri, pi in zip([1, 2, 3, 4], ['q', 'n', 'r', 'b']):
+                        self.image_board[ri][f].axes.set_facecolor('w')
+                        self.promotion_options.update({'%s%i'%(f, ri): pi})
+                        self.image_board[ri][f].set_data(PIECES_BLACK[pi])
+                        self.image_board[ri][f].set_alpha(1)
+                    pyplot.draw()
+
+
                 else:
-                    self.player_on_move = 'white'
+
+                    df_candidate_moves = self.possible_moves.query('end_square=="%s"'%clicked_square)
+                    move_text = df_candidate_moves.iloc[0]['notation']
+                    print('IDENTIFIED MOVE AS : %s (n=%i)' % (move_text, len(df_candidate_moves)))
+                    self.move_piece(move_text, self.player_on_move, board=None, redraw=True)
+
+                    self.selected_square = None
+                    self.possible_moves = pandas.DataFrame()
+
+                    if self.player_on_move == 'white':
+                        self.player_on_move = 'black'
+                    else:
+                        self.player_on_move = 'white'
 
 
             ###  if selecting a piece, get legal moves
@@ -206,7 +261,22 @@ class chessBoard(object):
                         f, r = move['end_square'][0], int(move['end_square'][1])
                         self.image_board[r][f].axes.set_facecolor('#ff9999')
 
-            self._redraw_board()
+                self._redraw_board()
+
+
+    def toggle_transparency(self, on_off):
+
+        if on_off == 'on':
+            self.ax.set_facecolor('gray')
+            for r in RANKS:
+                for f in FILES:
+                    self.image_board[r][f].set_alpha(0.5)
+
+        elif on_off == 'off':
+            self.ax.set_facecolor('none')
+            for r in RANKS:
+                for f in FILES:
+                    self.image_board[r][f].set_alpha(1)
 
 
     def load_pgn(self):
@@ -585,13 +655,13 @@ class chessBoard(object):
 
                 if p == 'white':
                     start_square = '%s%i' % (f, r-1)
-                    board[r][f2] = new_piece
-                    board[r-1][f1] = ' '
+                    board[r][f] = new_piece
+                    board[r-1][f] = ' '
 
                 if p == 'black':
                     start_square = '%s%i' % (f, r+1)
-                    board[r][f2] = new_piece.lower()
-                    board[r+1][f1] = ' '
+                    board[r][f] = new_piece.lower()
+                    board[r+1][f] = ' '
 
         return (board, start_square, end_square, en_passants)
 
@@ -1114,7 +1184,6 @@ class chessBoard(object):
                 s += '%s | ' % board[r][f]
             print(s)
             print('-'*(4*8+1))
-
 
 
     def evaluate(self, player, board=None):
