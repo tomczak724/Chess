@@ -60,11 +60,11 @@ class chessBoard(object):
         self.fens = ['rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1']
         self.promotion_prompt = False
 
-        self.legal_moves = self.get_legal_moves()
         self.player_on_move = 'white'
-        self.possible_moves = pandas.DataFrame()
         self.previous_move = {'player':'', 'move':''}
         self.castle_rights = 'KQkq'
+        self.legal_moves = self.get_legal_moves()
+        self.df_possible_moves = pandas.DataFrame()
 
 
         ###  initializing figure
@@ -150,7 +150,7 @@ class chessBoard(object):
             clicked_square = '%s%i' % (f, r)
             if clicked_square == self.selected_square:
                 self.selected_square = None
-                self.possible_moves = pandas.DataFrame()
+                self.df_possible_moves = pandas.DataFrame()
                 self._redraw_board()
 
 
@@ -160,12 +160,12 @@ class chessBoard(object):
                 if clicked_square in self.promotion_options.keys():
                     search_str_white = '%s8=%s' % (f, self.promotion_options[clicked_square])
                     search_str_black = '%s1=%s' % (f, self.promotion_options[clicked_square])
-                    idx_search = self.possible_moves['notation'].apply(lambda row: (search_str_white in row) or (search_str_black in row))
-                    move_text = self.possible_moves.loc[idx_search, 'notation'].iloc[0]
+                    idx_search = self.df_possible_moves['notation'].apply(lambda row: (search_str_white in row) or (search_str_black in row))
+                    move_text = self.df_possible_moves.loc[idx_search, 'notation'].iloc[0]
                     self.move_piece(move_text, self.player_on_move, board=None, redraw=True)
 
                     self.selected_square = None
-                    self.possible_moves = pandas.DataFrame()
+                    self.df_possible_moves = pandas.DataFrame()
                     self.promotion_options = {}
                     self.promotion_prompt = False
                     self.toggle_transparency('off')
@@ -177,7 +177,7 @@ class chessBoard(object):
 
 
             ###  moving piece if clicked square is in list of possible moves
-            elif (len(self.possible_moves) > 0) and (clicked_square in self.possible_moves['end_square'].tolist()):
+            elif (len(self.df_possible_moves) > 0) and (clicked_square in self.df_possible_moves['end_square'].tolist()):
 
                 ###  if pawn promotion then prompt for which piece
                 f0, r0 = self.selected_square
@@ -212,13 +212,13 @@ class chessBoard(object):
 
                 else:
 
-                    df_candidate_moves = self.possible_moves.query('end_square=="%s"'%clicked_square)
+                    df_candidate_moves = self.df_possible_moves.query('end_square=="%s"'%clicked_square)
                     move_text = df_candidate_moves.iloc[0]['notation']
                     print('IDENTIFIED MOVE AS : %s (n=%i)' % (move_text, len(df_candidate_moves)))
                     self.move_piece(move_text, self.player_on_move, board=None, redraw=True)
 
                     self.selected_square = None
-                    self.possible_moves = pandas.DataFrame()
+                    self.df_possible_moves = pandas.DataFrame()
 
                     if self.player_on_move == 'white':
                         self.player_on_move = 'black'
@@ -253,12 +253,12 @@ class chessBoard(object):
                 elif occupant.lower() == 'k':
                     moves = self.get_king_moves(f, r, self.player_on_move, board)
 
-                self.possible_moves = pandas.DataFrame(moves)
+                self.df_possible_moves = self.filter_illegal_moves(pandas.DataFrame(moves))
 
                 ###  highlighting squares for player on move
                 if (self.player_on_move == 'white' and occupant in PIECES_WHITE.keys()) or ((self.player_on_move == 'black' and occupant in PIECES_BLACK.keys())):
-                    for move in moves:
-                        f, r = move['end_square'][0], int(move['end_square'][1])
+                    for idx, row in self.df_possible_moves.iterrows():
+                        f, r = row['end_square'][0], int(row['end_square'][1])
                         self.image_board[r][f].axes.set_facecolor('#ff9999')
 
                 self._redraw_board()
@@ -554,6 +554,8 @@ class chessBoard(object):
 
     def _move_pawn(self, m, p, board):
 
+        board_copy = copy.deepcopy(board)
+
         ###  identifying end square
         if 'x' in m:
             end_square = m[2:4]
@@ -569,43 +571,43 @@ class chessBoard(object):
             f, r = m[0], int(m[1])
 
             if p == 'white':
-                board[r][f] = 'P'
+                board_copy[r][f] = 'P'
 
                 ###  checking if first move is two squares
-                if board[r-1][f] == ' ':
-                    board[r-2][f] = ' '
+                if board_copy[r-1][f] == ' ':
+                    board_copy[r-2][f] = ' '
                     start_square = '%s%i' % (f, r-2)
 
                     ###  checking if en passant is available
-                    if (r == 4) and (f != 'h') and (board[4][FILES[FILES.index(f)+1]] == 'p'):
+                    if (r == 4) and (f != 'h') and (board_copy[4][FILES[FILES.index(f)+1]] == 'p'):
                         en_passants.append('%sx%s3' % (FILES[FILES.index(f)+1], f))
 
-                    if (r == 4) and (f != 'a') and (board[4][FILES[FILES.index(f)-1]] == 'p'):
+                    if (r == 4) and (f != 'a') and (board_copy[4][FILES[FILES.index(f)-1]] == 'p'):
                         en_passants.append('%sx%s3' % (FILES[FILES.index(f)-1], f))
 
                 ###  if not then it was a one-square advance
                 else:
-                    board[r-1][f] = ' '
+                    board_copy[r-1][f] = ' '
                     start_square = '%s%i' % (f, r-1)
 
             if p == 'black':
-                board[r][f] = 'p'
+                board_copy[r][f] = 'p'
 
                 ###  checking if first move is two squares
-                if board[r+1][f] == ' ':
-                    board[r+2][f] = ' '
+                if board_copy[r+1][f] == ' ':
+                    board_copy[r+2][f] = ' '
                     start_square = '%s%i' % (f, r+2)
 
                     ###  checking if en passant is available
-                    if (r == 5) and (f != 'h') and (board[5][FILES[FILES.index(f)+1]] == 'P'):
+                    if (r == 5) and (f != 'h') and (board_copy[5][FILES[FILES.index(f)+1]] == 'P'):
                         en_passants.append('%sx%s6' % (FILES[FILES.index(f)+1], f))
 
-                    if (r == 5) and (f != 'a') and (board[5][FILES[FILES.index(f)-1]] == 'P'):
+                    if (r == 5) and (f != 'a') and (board_copy[5][FILES[FILES.index(f)-1]] == 'P'):
                         en_passants.append('%sx%s6' % (FILES[FILES.index(f)-1], f))
 
                 ###  if not then it was a one-square advance
                 else:
-                    board[r+1][f] = ' '
+                    board_copy[r+1][f] = ' '
                     start_square = '%s%i' % (f, r+1)
 
         ###  pawn captures (not including promotion)
@@ -616,21 +618,21 @@ class chessBoard(object):
                 start_square = '%s%i' % (f1, r-1)
 
                 ###  checking for en passant capture
-                if (r == 6) and (board[r][f2] == ' ') and (board[r-1][f2] == 'p'):
-                    board[r-1][f2] = ' '
+                if (r == 6) and (board_copy[r][f2] == ' ') and (board_copy[r-1][f2] == 'p'):
+                    board_copy[r-1][f2] = ' '
 
-                board[r][f2] = 'P'
-                board[r-1][f1] = ' '
+                board_copy[r][f2] = 'P'
+                board_copy[r-1][f1] = ' '
 
             if p == 'black':
                 start_square = '%s%i' % (f1, r+1)
 
                 ###  checking for en passant capture
-                if (r == 3) and (board[r][f2] == ' ') and (board[r+1][f2] == 'P'):
-                    board[r+1][f2] = ' '
+                if (r == 3) and (board_copy[r][f2] == ' ') and (board_copy[r+1][f2] == 'P'):
+                    board_copy[r+1][f2] = ' '
 
-                board[r][f2] = 'p'
-                board[r+1][f1] = ' '
+                board_copy[r][f2] = 'p'
+                board_copy[r+1][f1] = ' '
 
         ###  pawn promotions
         if '=' in m:
@@ -641,13 +643,13 @@ class chessBoard(object):
 
                 if p == 'white':
                     start_square = '%s%i' % (f1, r-1)
-                    board[r][f2] = new_piece
-                    board[r-1][f1] = ' '
+                    board_copy[r][f2] = new_piece
+                    board_copy[r-1][f1] = ' '
 
                 if p == 'black':
                     start_square = '%s%i' % (f1, r+1)
-                    board[r][f2] = new_piece.lower()
-                    board[r+1][f1] = ' '
+                    board_copy[r][f2] = new_piece.lower()
+                    board_copy[r+1][f1] = ' '
 
             ###  simple promotion
             else:
@@ -655,18 +657,20 @@ class chessBoard(object):
 
                 if p == 'white':
                     start_square = '%s%i' % (f, r-1)
-                    board[r][f] = new_piece
-                    board[r-1][f] = ' '
+                    board_copy[r][f] = new_piece
+                    board_copy[r-1][f] = ' '
 
                 if p == 'black':
                     start_square = '%s%i' % (f, r+1)
-                    board[r][f] = new_piece.lower()
-                    board[r+1][f] = ' '
+                    board_copy[r][f] = new_piece.lower()
+                    board_copy[r+1][f] = ' '
 
-        return (board, start_square, end_square, en_passants)
+        return (board_copy, start_square, end_square, en_passants)
 
 
     def _move_rook(self, m, p, board):
+
+        board_copy = copy.deepcopy(board)
 
         ###  removing extraneous notation
         m = m.strip('+').strip('#').replace('x', '')
@@ -679,8 +683,8 @@ class chessBoard(object):
         ###  resolving fully-disambiguated rook moves
         if len(m) == 5:
             f1, r1, f2, r2 = m[1], int(m[2]), m[3], int(m[4])
-            board[r1][f1] = ' '
-            board[r2][f2] = piece
+            board_copy[r1][f1] = ' '
+            board_copy[r2][f2] = piece
 
             ###  identifying start and end squares
             start_square = m[1:3]
@@ -692,14 +696,14 @@ class chessBoard(object):
 
             ###  identifying starting square
             if rf1 in FILES:
-                board[r2][rf1] = ' '
+                board_copy[r2][rf1] = ' '
                 start_square = '%s%i' % (rf1, r2)
             else:
-                board[int(rf1)][f2] = ' '
+                board_copy[int(rf1)][f2] = ' '
                 start_square = '%s%i' % (f2, int(rf1))
 
             end_square = '%s%i' % (f2, r2)
-            board[r2][f2] = piece
+            board_copy[r2][f2] = piece
 
 
         ###  resolving regular rook moves
@@ -710,32 +714,34 @@ class chessBoard(object):
             ###  search for current location of rook, vacating square
             ###  cycling through RANKS from nearest to farthest
             for dr in range(1, 8, 1):
-                if (r2-dr in RANKS) and (board[r2-dr][f2] == piece):
-                    board[r2-dr][f2] = ' '
+                if (r2-dr in RANKS) and (board_copy[r2-dr][f2] == piece):
+                    board_copy[r2-dr][f2] = ' '
                     start_square = '%s%i' % (f2, r2-dr)
                     break
-                if (r2+dr in RANKS) and (board[r2+dr][f2] == piece):
-                    board[r2+dr][f2] = ' '
+                if (r2+dr in RANKS) and (board_copy[r2+dr][f2] == piece):
+                    board_copy[r2+dr][f2] = ' '
                     start_square = '%s%i' % (f2, r2+dr)
                     break
 
             ###  cycling through FILES from nearest to farthest
             for df in range(1, 8, 1):
-                if (FILES.index(f2)-df in range(8)) and (board[r2][FILES[FILES.index(f2)-df]] == piece):
-                    board[r2][FILES[FILES.index(f2)-df]] = ' '
+                if (FILES.index(f2)-df in range(8)) and (board_copy[r2][FILES[FILES.index(f2)-df]] == piece):
+                    board_copy[r2][FILES[FILES.index(f2)-df]] = ' '
                     start_square = '%s%i' % (FILES[FILES.index(f2)-df], r2)
                     break
-                if (FILES.index(f2)+df in range(8)) and (board[r2][FILES[FILES.index(f2)+df]] == piece):
-                    board[r2][FILES[FILES.index(f2)+df]] = ' '
+                if (FILES.index(f2)+df in range(8)) and (board_copy[r2][FILES[FILES.index(f2)+df]] == piece):
+                    board_copy[r2][FILES[FILES.index(f2)+df]] = ' '
                     start_square = '%s%i' % (FILES[FILES.index(f2)+df], r2)
                     break
 
-            board[r2][f2] = piece
+            board_copy[r2][f2] = piece
 
-        return (board, start_square, end_square)
+        return (board_copy, start_square, end_square)
 
 
     def _move_knight(self, m, p, board):
+
+        board_copy = copy.deepcopy(board)
 
         ###  removing extraneous notation
         m = m.strip('+').strip('#').replace('x', '')
@@ -748,8 +754,8 @@ class chessBoard(object):
         ###  resolving fully-disambiguated knight moves
         if len(m) == 5:
             f1, r1, f2, r2 = m[1], int(m[2]), m[3], int(m[4])
-            board[r1][f1] = ' '
-            board[r2][f2] = piece
+            board_copy[r1][f1] = ' '
+            board_copy[r2][f2] = piece
 
             ###  identifying start and end squares
             start_square = m[1:3]
@@ -765,19 +771,19 @@ class chessBoard(object):
             if rf1 in FILES:
                 ###  cycling through RANKS
                 for r1 in RANKS:
-                    if board[r1][rf1] == piece:
-                        board[r1][rf1] = ' '
+                    if board_copy[r1][rf1] == piece:
+                        board_copy[r1][rf1] = ' '
                         start_square = '%s%i' % (rf1, r1)
                         break
             else:
                 ###  cycling through FILES
                 for f1 in FILES:
-                    if board[int(rf1)][f1] == piece:
-                        board[int(rf1)][f1] = ' '
+                    if board_copy[int(rf1)][f1] == piece:
+                        board_copy[int(rf1)][f1] = ' '
                         start_square = '%s%i' % (f1, int(rf1))
                         break
 
-            board[r2][f2] = piece
+            board_copy[r2][f2] = piece
 
 
         ###  resolving regular knight moves
@@ -806,18 +812,19 @@ class chessBoard(object):
 
             ###  checking candidate starting squares, vacating knight
             for f1, r1 in candidate_starts:
-                if board[r1][f1] == piece:
-                    board[r1][f1] = ' '
+                if board_copy[r1][f1] == piece:
+                    board_copy[r1][f1] = ' '
                     start_square = '%s%i' % (f1, r1)
                     break
 
-            board[r2][f2] = piece
+            board_copy[r2][f2] = piece
 
-        return (board, start_square, end_square)
+        return (board_copy, start_square, end_square)
 
 
     def _move_bishop(self, m, p, board):
 
+        board_copy = copy.deepcopy(board)
 
         ###  removing extraneous notation
         m = m.strip('+').strip('#').replace('x', '')
@@ -830,8 +837,8 @@ class chessBoard(object):
         ###  resolving fully-disambiguated bishop moves
         if len(m) == 5:
             f1, r1, f2, r2 = m[1], int(m[2]), m[3], int(m[4])
-            board[r1][f1] = ' '
-            board[r2][f2] = piece
+            board_copy[r1][f1] = ' '
+            board_copy[r2][f2] = piece
 
             ###  identifying start and end squares
             start_square = m[1:3]
@@ -846,19 +853,19 @@ class chessBoard(object):
             if rf1 in FILES:
                 ###  cycling through RANKS
                 for r1 in RANKS:
-                    if board[r1][rf1] == piece:
-                        board[r2][rf1] = ' '
+                    if board_copy[r1][rf1] == piece:
+                        board_copy[r2][rf1] = ' '
                         start_square = '%s%i' % (rf1, r1)
                         break
             else:
                 ###  cycling through FILES
                 for f1 in FILES:
-                    if board[int(rf1)][f1] == piece:
-                        board[int(rf1)][f1] = ' '
+                    if board_copy[int(rf1)][f1] == piece:
+                        board_copy[int(rf1)][f1] = ' '
                         start_square = '%s%i' % (f1, int(rf1))
                         break
 
-            board[r2][f2] = piece
+            board_copy[r2][f2] = piece
 
 
         ###  resolving regular bishop moves
@@ -882,17 +889,18 @@ class chessBoard(object):
 
             ###  searching through candidates, vacating square
             for f1, r1 in candidate_starts:
-                if board[r1][f1] == piece:
-                    board[r1][f1] = ' '
+                if board_copy[r1][f1] == piece:
+                    board_copy[r1][f1] = ' '
                     start_square = '%s%i' % (f1, r1)
 
-            board[r2][f2] = piece
+            board_copy[r2][f2] = piece
 
-        return (board, start_square, end_square)
+        return (board_copy, start_square, end_square)
 
 
     def _move_queen(self, m, p, board):
 
+        board_copy = copy.deepcopy(board)
 
         ###  removing extraneous notation
         m = m.strip('+').strip('#').replace('x', '')
@@ -905,8 +913,8 @@ class chessBoard(object):
         ###  resolving fully-disambiguated queen moves
         if len(m) == 5:
             f1, r1, f2, r2 = m[1], int(m[2]), m[3], int(m[4])
-            board[r1][f1] = ' '
-            board[r2][f2] = piece
+            board_copy[r1][f1] = ' '
+            board_copy[r2][f2] = piece
 
             ###  identifying start and end squares
             start_square = m[1:3]
@@ -921,19 +929,19 @@ class chessBoard(object):
             if rf1 in FILES:
                 ###  cycling through RANKS
                 for r1 in RANKS:
-                    if board[r1][rf1] == piece:
-                        board[r2][rf1] = ' '
+                    if board_copy[r1][rf1] == piece:
+                        board_copy[r2][rf1] = ' '
                         start_square = '%s%i' % (rf1, r1)
                         break
             else:
                 ###  cycling through FILES
                 for f1 in FILES:
-                    if board[int(rf1)][f1] == piece:
-                        board[int(rf1)][f1] = ' '
+                    if board_copy[int(rf1)][f1] == piece:
+                        board_copy[int(rf1)][f1] = ' '
                         start_square = '%s%i' % (f1, int(rf1))
                         break
 
-            board[r2][f2] = piece
+            board_copy[r2][f2] = piece
 
         ###  resolving regular queen moves
         else:
@@ -951,11 +959,11 @@ class chessBoard(object):
                 if (r2+d in RANKS) and (FILES.index(f2)+d in range(8)):
 
                     ###  checking if square is occupied, truncate search if blocked by another piece
-                    if board[r2+d][FILES[FILES.index(f2)+d]] == piece:
+                    if board_copy[r2+d][FILES[FILES.index(f2)+d]] == piece:
                         found_queen = True
                         r1, f1 = r2+d, FILES[FILES.index(f2)+d]
                         break
-                    elif board[r2+d][FILES[FILES.index(f2)+d]] != ' ':
+                    elif board_copy[r2+d][FILES[FILES.index(f2)+d]] != ' ':
                         break
 
 
@@ -968,11 +976,11 @@ class chessBoard(object):
                 if (FILES.index(f2)+d in range(8)):
 
                     ###  checking if square is occupied, truncate search if blocked by another piece
-                    if board[r2][FILES[FILES.index(f2)+d]] == piece:
+                    if board_copy[r2][FILES[FILES.index(f2)+d]] == piece:
                         found_queen = True
                         r1, f1 = r2, FILES[FILES.index(f2)+d]
                         break
-                    elif board[r2][FILES[FILES.index(f2)+d]] != ' ':
+                    elif board_copy[r2][FILES[FILES.index(f2)+d]] != ' ':
                         break
 
 
@@ -985,11 +993,11 @@ class chessBoard(object):
                 if (r2-d in RANKS) and (FILES.index(f2)+d in range(8)):
 
                     ###  checking if square is occupied, truncate search if blocked by another piece
-                    if board[r2-d][FILES[FILES.index(f2)+d]] == piece:
+                    if board_copy[r2-d][FILES[FILES.index(f2)+d]] == piece:
                         found_queen = True
                         r1, f1 = r2-d, FILES[FILES.index(f2)+d]
                         break
-                    elif board[r2-d][FILES[FILES.index(f2)+d]] != ' ':
+                    elif board_copy[r2-d][FILES[FILES.index(f2)+d]] != ' ':
                         break
 
 
@@ -1002,11 +1010,11 @@ class chessBoard(object):
                 if (r2-d in RANKS):
 
                     ###  checking if square is occupied, truncate search if blocked by another piece
-                    if board[r2-d][f2] == piece:
+                    if board_copy[r2-d][f2] == piece:
                         found_queen = True
                         r1, f1 = r2-d, f2
                         break
-                    elif board[r2-d][f2] != ' ':
+                    elif board_copy[r2-d][f2] != ' ':
                         break
 
 
@@ -1019,11 +1027,11 @@ class chessBoard(object):
                 if (r2-d in RANKS) and (FILES.index(f2)-d in range(8)):
 
                     ###  checking if square is occupied, truncate search if blocked by another piece
-                    if board[r2-d][FILES[FILES.index(f2)-d]] == piece:
+                    if board_copy[r2-d][FILES[FILES.index(f2)-d]] == piece:
                         found_queen = True
                         r1, f1 = r2-d, FILES[FILES.index(f2)-d]
                         break
-                    elif board[r2-d][FILES[FILES.index(f2)-d]] != ' ':
+                    elif board_copy[r2-d][FILES[FILES.index(f2)-d]] != ' ':
                         break
 
 
@@ -1036,11 +1044,11 @@ class chessBoard(object):
                 if (FILES.index(f2)-d in range(8)):
 
                     ###  checking if square is occupied, truncate search if blocked by another piece
-                    if board[r2][FILES[FILES.index(f2)-d]] == piece:
+                    if board_copy[r2][FILES[FILES.index(f2)-d]] == piece:
                         found_queen = True
                         r1, f1 = r2, FILES[FILES.index(f2)-d]
                         break
-                    elif board[r2][FILES[FILES.index(f2)-d]] != ' ':
+                    elif board_copy[r2][FILES[FILES.index(f2)-d]] != ' ':
                         break
 
 
@@ -1053,11 +1061,11 @@ class chessBoard(object):
                 if (r2+d in RANKS) and (FILES.index(f2)-d in range(8)):
 
                     ###  checking if square is occupied, truncate search if blocked by another piece
-                    if board[r2+d][FILES[FILES.index(f2)-d]] == piece:
+                    if board_copy[r2+d][FILES[FILES.index(f2)-d]] == piece:
                         found_queen = True
                         r1, f1 = r2+d, FILES[FILES.index(f2)-d]
                         break
-                    elif board[r2+d][FILES[FILES.index(f2)-d]] != ' ':
+                    elif board_copy[r2+d][FILES[FILES.index(f2)-d]] != ' ':
                         break
 
 
@@ -1070,22 +1078,24 @@ class chessBoard(object):
                 if (r2+d in RANKS):
 
                     ###  checking if square is occupied, truncate search if blocked by another piece
-                    if board[r2+d][f2] == piece:
+                    if board_copy[r2+d][f2] == piece:
                         found_queen = True
                         r1, f1 = r2+d, f2
                         break
-                    elif board[r2+d][f2] != ' ':
+                    elif board_copy[r2+d][f2] != ' ':
                         break
 
 
             start_square = '%s%i' % (f1, r1)
-            board[r1][f1] = ' '
-            board[r2][f2] = piece
+            board_copy[r1][f1] = ' '
+            board_copy[r2][f2] = piece
 
-        return (board, start_square, end_square)
+        return (board_copy, start_square, end_square)
 
 
     def _move_king(self, m, p, board):
+
+        board_copy = copy.deepcopy(board)
 
         ###  removing extraneous notation
         m = m.strip('+').strip('#').replace('x', '')
@@ -1094,8 +1104,25 @@ class chessBoard(object):
         else:
             piece = 'k'
 
-        ###  if move is fully-disambiguated
-        if len(m) == 5:
+
+        ###  handling king-side castling
+        if (m == 'O-O') and (p == 'white'):
+            r1, f1 = 1, 'e'
+            r2, f2 = 1, 'g'
+        elif (m == 'O-O') and (p == 'black'):
+            r1, f1 = 8, 'e'
+            r2, f2 = 8, 'g'
+
+        ###  handling queen-side castling
+        elif (m == 'O-O-O') and (p == 'white'):
+            r1, f1 = 1, 'e'
+            r2, f2 = 1, 'c'
+        elif (m == 'O-O-O') and (p == 'black'):
+            r1, f1 = 8, 'e'
+            r2, f2 = 8, 'c'
+
+        ###  handling fully-disambiguated move
+        elif len(m) == 5:
             f1, r1 = m[1], int(m[2])
             f2, r2 = m[3], int(m[4])
 
@@ -1106,7 +1133,7 @@ class chessBoard(object):
             for r1 in set(RANKS).intersection(set([r2-1, r2, r2+1])):
                 for i_file in set(range(8)).intersection(set([FILES.index(f2)-1, FILES.index(f2), FILES.index(f2)+1])):
                     f1 = FILES[i_file]
-                    if board[r1][f1] == piece:
+                    if board_copy[r1][f1] == piece:
                         found_king = True
                         break
                 if found_king is True:
@@ -1115,45 +1142,47 @@ class chessBoard(object):
         ###  relabel start and end squares
         start_square = '%s%i' % (f1, r1)
         end_square = '%s%i' % (f2, r2)
-        board[r1][f1] = ' '
-        board[r2][f2] = piece
+        board_copy[r1][f1] = ' '
+        board_copy[r2][f2] = piece
 
-        return (board, start_square, end_square)
+        return (board_copy, start_square, end_square)
 
 
     def _move_castle(self, m, p, board):
 
+        board_copy = copy.deepcopy(board)
+
         if (p == 'white'):
             if m.strip('+').strip('#') == 'O-O':
-                board[1]['e'] = ' '
-                board[1]['h'] = ' '
-                board[1]['g'] = 'K'
-                board[1]['f'] = 'R'
+                board_copy[1]['e'] = ' '
+                board_copy[1]['h'] = ' '
+                board_copy[1]['g'] = 'K'
+                board_copy[1]['f'] = 'R'
                 start_square, end_square = 'e1', 'g1'
 
             if m.strip('+').strip('#') == 'O-O-O':
-                board[1]['e'] = ' '
-                board[1]['a'] = ' '
-                board[1]['c'] = 'K'
-                board[1]['d'] = 'R'
+                board_copy[1]['e'] = ' '
+                board_copy[1]['a'] = ' '
+                board_copy[1]['c'] = 'K'
+                board_copy[1]['d'] = 'R'
                 start_square, end_square = 'e1', 'c1'
 
         elif (p == 'black'):
             if m.strip('+').strip('#') == 'O-O':
-                board[8]['e'] = ' '
-                board[8]['h'] = ' '
-                board[8]['g'] = 'k'
-                board[8]['f'] = 'r'
+                board_copy[8]['e'] = ' '
+                board_copy[8]['h'] = ' '
+                board_copy[8]['g'] = 'k'
+                board_copy[8]['f'] = 'r'
                 start_square, end_square = 'e8', 'g8'
 
             if m.strip('+').strip('#') == 'O-O-O':
-                board[8]['e'] = ' '
-                board[8]['a'] = ' '
-                board[8]['c'] = 'k'
-                board[8]['d'] = 'r'
+                board_copy[8]['e'] = ' '
+                board_copy[8]['a'] = ' '
+                board_copy[8]['c'] = 'k'
+                board_copy[8]['d'] = 'r'
                 start_square, end_square = 'e8', 'c8'
 
-        return (board, start_square, end_square)
+        return (board_copy, start_square, end_square)
 
 
     def _redraw_board(self, board=None):
@@ -1983,11 +2012,95 @@ class chessBoard(object):
                                        'start_square': start_square, 
                                        'end_square': end_square})
 
+        ###  identifying castling moves
+        if (player == 'white'):
+            if ('K' in self.castle_rights) and (board[1]['f']+board[1]['g'] == 2*' '):
+                moves_dict.append({'player': player, 
+                                   'piece': 'king', 
+                                   'notation': 'O-O', 
+                                   'start_square': 'e1', 
+                                   'end_square': 'g1'})
+            if ('Q' in self.castle_rights) and (board[1]['b']+board[1]['c']+board[1]['d'] == 3*' '):
+                moves_dict.append({'player': player, 
+                                   'piece': 'king', 
+                                   'notation': 'O-O-O', 
+                                   'start_square': 'e1', 
+                                   'end_square': 'c1'})
+        if (player == 'black'):
+            if ('k' in self.castle_rights) and (board[8]['f']+board[8]['g'] == 2*' '):
+                moves_dict.append({'player': player, 
+                                   'piece': 'king', 
+                                   'notation': 'O-O', 
+                                   'start_square': 'e8', 
+                                   'end_square': 'g8'})
+            if ('q' in self.castle_rights) and (board[8]['b']+board[8]['c']+board[8]['d'] == 3*' '):
+                moves_dict.append({'player': player, 
+                                   'piece': 'king', 
+                                   'notation': 'O-O-O', 
+                                   'start_square': 'e8', 
+                                   'end_square': 'c8'})
+
         return moves_dict
 
 
+    def filter_illegal_moves(self, df_candidate_moves, board=None):
 
+        if board is None:
+            board = copy.deepcopy(self.chess_boards[-1])
 
+        ###  iterating over candidate moves
+        n_attacks_by_white_current, n_attacks_by_black_current = self.get_attacked_squares(board)
+        df_candidate_moves['legal'] = True
+        for idx, row in df_candidate_moves.iterrows():
+
+            if row['piece'] == 'pawn':
+                (next_board, start_square, end_square, en_passants) = self._move_pawn(row['notation'], row['player'], board)
+
+            if row['piece'] == 'knight':
+                (next_board, start_square, end_square) = self._move_knight(row['notation'], row['player'], board)
+
+            if row['piece'] == 'bishop':
+                (next_board, start_square, end_square) = self._move_bishop(row['notation'], row['player'], board)
+
+            if row['piece'] == 'rook':
+                (next_board, start_square, end_square) = self._move_rook(row['notation'], row['player'], board)
+
+            if row['piece'] == 'king':
+                (next_board, start_square, end_square) = self._move_king(row['notation'], row['player'], board)
+
+            if row['piece'] == 'queen':
+                (next_board, start_square, end_square) = self._move_queen(row['notation'], row['player'], board)
+
+            ###  locating squares occupied by kings
+            for r in RANKS:
+                for f in FILES:
+                    if next_board[r][f] == 'K':
+                        r_white_king, f_white_king = r, f
+                    if next_board[r][f] == 'k':
+                        r_black_king, f_black_king = r, f
+
+            ###  examining if king is under attack after applying candidate move
+            n_attacks_by_white, n_attacks_by_black = self.get_attacked_squares(next_board)
+            if (row['player'] == 'white') and (n_attacks_by_black[r_white_king][f_white_king] > 0):
+                df_candidate_moves.loc[idx, 'legal'] = False
+            if (row['player'] == 'black') and (n_attacks_by_white[r_black_king][f_black_king] > 0):
+                df_candidate_moves.loc[idx, 'legal'] = False
+
+            ###  for castling, make sure king is not alredy in check of moving through check
+            if (row['player'] == 'white') and (row['notation'] == 'O-O'):
+                if (n_attacks_by_black_current[1]['e'] > 0) or (n_attacks_by_black_current[1]['f'] > 0):
+                    df_candidate_moves.loc[idx, 'legal'] = False
+            if (row['player'] == 'black') and (row['notation'] == 'O-O'):
+                if (n_attacks_by_white_current[8]['e'] > 0) or (n_attacks_by_white_current[8]['f'] > 0):
+                    df_candidate_moves.loc[idx, 'legal'] = False
+            if (row['player'] == 'white') and (row['notation'] == 'O-O-O'):
+                if (n_attacks_by_black_current[1]['e'] > 0) or (n_attacks_by_black_current[1]['d'] > 0):
+                    df_candidate_moves.loc[idx, 'legal'] = False
+            if (row['player'] == 'black') and (row['notation'] == 'O-O-O'):
+                if (n_attacks_by_white_current[8]['e'] > 0) or (n_attacks_by_white_current[8]['d'] > 0):
+                    df_candidate_moves.loc[idx, 'legal'] = False
+
+        return df_candidate_moves.query('legal==True').reset_index(drop=True)
 
 
 
@@ -1997,25 +2110,206 @@ class chessBoard(object):
             board = copy.deepcopy(self.chess_boards[-1])
 
 
-        n_attacked_by_white = [{8:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                7:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                6:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                5:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                4:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                3:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                2:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                1:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}}]
+        n_attacks_by_white = {8:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              7:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              6:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              5:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              4:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              3:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              2:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              1:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}}
 
-        n_attacked_by_black = [{8:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                7:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                6:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                5:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                4:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                3:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                2:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
-                                1:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}}]
-
-
+        n_attacks_by_black = {8:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              7:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              6:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              5:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              4:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              3:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              2:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}, 
+                              1:{'a':0, 'b':0, 'c':0, 'd':0, 'e':0, 'f':0, 'g':0, 'h':0}}
 
 
+        ###  iterating over squares
+        for r in RANKS:
+            for f in FILES:
 
+                ###  hangling pawn attacks
+                if (board[r][f] == 'P') and (f != 'h'):
+                    n_attacks_by_white[r+1][FILES[FILES.index(f)+1]] += 1
+                if (board[r][f] == 'P') and (f != 'a'):
+                    n_attacks_by_white[r+1][FILES[FILES.index(f)-1]] += 1
+                if (board[r][f] == 'p') and (f != 'h'):
+                    n_attacks_by_black[r-1][FILES[FILES.index(f)+1]] += 1
+                if (board[r][f] == 'p') and (f != 'a'):
+                    n_attacks_by_black[r-1][FILES[FILES.index(f)-1]] += 1
+
+                ###  handling attacks by knights
+                if (board[r][f] == 'N'):
+                    if (3 <= r) and (1 <= FILES.index(f)):
+                        n_attacks_by_white[r-2][FILES[FILES.index(f)-1]] += 1
+                    if (2 <= r) and (2 <= FILES.index(f)):
+                        n_attacks_by_white[r-1][FILES[FILES.index(f)-2]] += 1
+                    if (r <= 7) and (2 <= FILES.index(f)):
+                        n_attacks_by_white[r+1][FILES[FILES.index(f)-2]] += 1
+                    if (r <= 6) and (1 <= FILES.index(f)):
+                        n_attacks_by_white[r+2][FILES[FILES.index(f)-1]] += 1
+                    if (r <= 6) and (FILES.index(f) <= 6):
+                        n_attacks_by_white[r+2][FILES[FILES.index(f)+1]] += 1
+                    if (r <= 7) and (FILES.index(f) <= 5):
+                        n_attacks_by_white[r+1][FILES[FILES.index(f)+2]] += 1
+                    if (2 <= r) and (FILES.index(f) <= 5):
+                        n_attacks_by_white[r-1][FILES[FILES.index(f)+2]] += 1
+                    if (3 <= r) and (FILES.index(f) <= 6):
+                        n_attacks_by_white[r-2][FILES[FILES.index(f)+1]] += 1
+                if (board[r][f] == 'n'):
+                    if (3 <= r) and (1 <= FILES.index(f)):
+                        n_attacks_by_black[r-2][FILES[FILES.index(f)-1]] += 1
+                    if (2 <= r) and (2 <= FILES.index(f)):
+                        n_attacks_by_black[r-1][FILES[FILES.index(f)-2]] += 1
+                    if (r <= 7) and (2 <= FILES.index(f)):
+                        n_attacks_by_black[r+1][FILES[FILES.index(f)-2]] += 1
+                    if (r <= 6) and (1 <= FILES.index(f)):
+                        n_attacks_by_black[r+2][FILES[FILES.index(f)-1]] += 1
+                    if (r <= 6) and (FILES.index(f) <= 6):
+                        n_attacks_by_black[r+2][FILES[FILES.index(f)+1]] += 1
+                    if (r <= 7) and (FILES.index(f) <= 5):
+                        n_attacks_by_black[r+1][FILES[FILES.index(f)+2]] += 1
+                    if (2 <= r) and (FILES.index(f) <= 5):
+                        n_attacks_by_black[r-1][FILES[FILES.index(f)+2]] += 1
+                    if (3 <= r) and (FILES.index(f) <= 6):
+                        n_attacks_by_black[r-2][FILES[FILES.index(f)+1]] += 1
+
+                ###  handling attacks by rooks (and queen)
+                if (board[r][f] in ['R', 'Q']):
+                    ###  right files
+                    for f2 in FILES[FILES.index(f)+1:]:
+                        n_attacks_by_white[r][f2] += 1
+                        if board[r][f2] != ' ':
+                            break
+                    ###  down ranks
+                    for r2 in RANKS[:r-1][::-1]:
+                        n_attacks_by_white[r2][f] += 1
+                        if board[r2][f] != ' ':
+                            break
+                    ###  left files
+                    for f2 in FILES[:FILES.index(f)][::-1]:
+                        n_attacks_by_white[r][f2] += 1
+                        if board[r][f2] != ' ':
+                            break
+                    ###  up ranks
+                    for r2 in RANKS[r:]:
+                        n_attacks_by_white[r2][f] += 1
+                        if board[r2][f] != ' ':
+                            break
+                if (board[r][f] in ['r', 'q']):
+                    ###  right files
+                    for f2 in FILES[FILES.index(f)+1:]:
+                        n_attacks_by_black[r][f2] += 1
+                        if board[r][f2] != ' ':
+                            break
+                    ###  down ranks
+                    for r2 in RANKS[:r-1][::-1]:
+                        n_attacks_by_black[r2][f] += 1
+                        if board[r2][f] != ' ':
+                            break
+                    ###  left files
+                    for f2 in FILES[:FILES.index(f)][::-1]:
+                        n_attacks_by_black[r][f2] += 1
+                        if board[r][f2] != ' ':
+                            break
+                    ###  up ranks
+                    for r2 in RANKS[r:]:
+                        n_attacks_by_black[r2][f] += 1
+                        if board[r2][f] != ' ':
+                            break
+
+                ###  handling attacks by bishops (and queen)
+                if (board[r][f] in ['B', 'Q']):
+                    ###  up-right diagonal
+                    for d in range(1, 8, 1):
+                        if (r+d in RANKS) and (FILES.index(f)+d in range(8)):
+                            n_attacks_by_white[r+d][FILES[FILES.index(f)+d]] += 1
+                            if board[r+d][FILES[FILES.index(f)+d]] != ' ':
+                                break
+                    ###  down-right diagonal
+                    for d in range(1, 8, 1):
+                        if (r-d in RANKS) and (FILES.index(f)+d in range(8)):
+                            n_attacks_by_white[r-d][FILES[FILES.index(f)+d]] += 1
+                            if board[r-d][FILES[FILES.index(f)+d]] != ' ':
+                                break
+                    ###  down-left diagonal
+                    for d in range(1, 8, 1):
+                        if (r-d in RANKS) and (FILES.index(f)-d in range(8)):
+                            n_attacks_by_white[r-d][FILES[FILES.index(f)-d]] += 1
+                            if board[r-d][FILES[FILES.index(f)-d]] != ' ':
+                                break
+                    ###  up-left diagonal
+                    for d in range(1, 8, 1):
+                        if (r+d in RANKS) and (FILES.index(f)-d in range(8)):
+                            n_attacks_by_white[r+d][FILES[FILES.index(f)-d]] += 1
+                            if board[r+d][FILES[FILES.index(f)-d]] != ' ':
+                                break
+                if (board[r][f] in ['b', 'q']):
+                    ###  up-right diagonal
+                    for d in range(1, 8, 1):
+                        if (r+d in RANKS) and (FILES.index(f)+d in range(8)):
+                            n_attacks_by_black[r+d][FILES[FILES.index(f)+d]] += 1
+                            if board[r+d][FILES[FILES.index(f)+d]] != ' ':
+                                break
+                    ###  down-right diagonal
+                    for d in range(1, 8, 1):
+                        if (r-d in RANKS) and (FILES.index(f)+d in range(8)):
+                            n_attacks_by_black[r-d][FILES[FILES.index(f)+d]] += 1
+                            if board[r-d][FILES[FILES.index(f)+d]] != ' ':
+                                break
+                    ###  down-left diagonal
+                    for d in range(1, 8, 1):
+                        if (r-d in RANKS) and (FILES.index(f)-d in range(8)):
+                            n_attacks_by_black[r-d][FILES[FILES.index(f)-d]] += 1
+                            if board[r-d][FILES[FILES.index(f)-d]] != ' ':
+                                break
+                    ###  up-left diagonal
+                    for d in range(1, 8, 1):
+                        if (r+d in RANKS) and (FILES.index(f)-d in range(8)):
+                            n_attacks_by_black[r+d][FILES[FILES.index(f)-d]] += 1
+                            if board[r+d][FILES[FILES.index(f)-d]] != ' ':
+                                break
+
+                ###  handling attacks by kings
+                if (board[r][f] == 'K'):
+                    ###  iterating over squares adjacent to king
+                    for r2 in set(RANKS).intersection(set([r-1, r, r+1])):
+                        for i_file in set(range(8)).intersection(set([FILES.index(f)-1, FILES.index(f), FILES.index(f)+1])):
+                            f2 = FILES[i_file]
+                            if '%s%i'%(f,r) != '%s%i'%(f2,r2):
+                                n_attacks_by_white[r2][f2] += 1
+                if (board[r][f] == 'k'):
+                    ###  iterating over squares adjacent to king
+                    for r2 in set(RANKS).intersection(set([r-1, r, r+1])):
+                        for i_file in set(range(8)).intersection(set([FILES.index(f)-1, FILES.index(f), FILES.index(f)+1])):
+                            f2 = FILES[i_file]
+                            if '%s%i'%(f,r) != '%s%i'%(f2,r2):
+                                n_attacks_by_black[r2][f2] += 1
+
+        return (n_attacks_by_white, n_attacks_by_black)
+
+
+
+    def print_n_attacks(self, board=None):
+
+        n_attacks_by_white, n_attacks_by_black = self.get_attacked_squares(board=board)
+
+        print('\nNumber of Attacks by White')
+        for r, files in n_attacks_by_white.items():
+            s = ''
+            for f, n in files.items():
+                s += '%i ' % n
+            print(s)
+
+        print('\nNumber of Attacks by Black')
+        for r, files in n_attacks_by_black.items():
+            s = ''
+            for f, n in files.items():
+                s += '%i ' % n
+            print(s)
+ 
