@@ -1,6 +1,7 @@
 
 import os
 import pdb
+import sys
 import copy
 import time
 import json
@@ -45,7 +46,6 @@ class chessBoard(object):
 
     def __init__(self, pgn_file=None):
 
-        self.list_eval_metrics = []
 
         self.pgn_file = pgn_file
         if self.pgn_file is not None:
@@ -63,6 +63,7 @@ class chessBoard(object):
                               2:{'a':'P', 'b':'P', 'c':'P', 'd':'P', 'e':'P', 'f':'P', 'g':'P', 'h':'P'}, 
                               1:{'a':'R', 'b':'N', 'c':'B', 'd':'Q', 'e':'K', 'f':'B', 'g':'N', 'h':'R'}}]
 
+        self.list_eval_metrics = [self.calc_evaluation_metrics(self.chess_boards[-1])]
 
         ###  setting up lists of legal moves
         self.df_moves = pandas.DataFrame(columns=['player', 'notation', 'piece', 'start_square', 'end_square', 'capture_flag', 'check_flag', 'fen_board_position', 'ep_target', 'castle_rights', 'halfmove_count'])
@@ -127,15 +128,22 @@ class chessBoard(object):
         ###  iterating over PGN if provided
         if pgn_file is not None:
 
+            ###  applying all moves in PGN, one-by-one
             for idx, row in self.df_pgn.iterrows():
 
                 self.next(1)
+                self.list_eval_metrics.append(self.calc_evaluation_metrics(self.chess_boards[-1]))
                 if ('#' in row['white']) or ('++' in row['white']):
                     break
 
                 self.next(1)
+                self.list_eval_metrics.append(self.calc_evaluation_metrics(self.chess_boards[-1]))
                 if ('#' in row['black']) or ('++' in row['black']):
                     break
+
+            fnames_existing_evals = glob.glob('../data/evaluations/game_*csv')
+            fout = '../data/evaluations/game_%03i.csv' % len(fnames_existing_evals)
+            pandas.DataFrame(self.list_eval_metrics).to_csv(fout, index=None)
 
         ###  instantiating interactive variables
         self.selected_square = None
@@ -338,17 +346,55 @@ class chessBoard(object):
 
         ###  reading and parsing PGN text
         with open(self.pgn_file, 'r') as fopen:
+
+            ###  reading all lines of text file
             lines = fopen.readlines()
-            text = ''.join(lines)
-            text = text.replace('\n', ' ')
 
-            ###  extracting text for moves
-            text_moves = text.replace('.', '').split(' 1 ')[-1]
-            while '  ' in text_moves:
-                text_moves = text_moves.replace('  ', ' ')
+            ###  parsing metadata
+            metadata = {}
+            for line in lines:
+                if line[0] == '[':
+                    line_cleaned = line.strip('[]\n')
+                    key = line_cleaned.split(' ')[0]
+                    value = eval(line_cleaned.replace('%s '%key, ''))
+                    metadata[key] = value
 
-            list_moves = ['1'] + text_moves.split(' ')
-            return pandas.DataFrame(numpy.array(list_moves).reshape((int(len(list_moves)/3), 3)), columns=['turn', 'white', 'black'])
+            ###  sluggifying moves text
+            moves_text = ''.join(lines[len(metadata):])
+            moves_text = moves_text.replace('\n', ' ').replace('%', '')
+            moves_text = moves_text.strip(' ')
+            while '  ' in moves_text:
+                moves_text = moves_text.replace('  ', ' ')
+
+            ###  parsing moves data from moves text
+            list_moves = []
+            move_data = None
+            move_counter = 1
+            player = 'black'
+            for block in moves_text.split(' '):
+
+                if block == '%i.' % move_counter:
+                    if move_data is not None:
+                        list_moves.append(move_data)
+
+                    move_data = {'turn': move_counter}
+                    move_counter += 1
+
+                elif '{[' in block:
+                    k = block.replace('{[', '')
+
+                elif ']}' in block:
+                    v = block.replace(']}', '')
+                    move_data['%s_%s' % (k, player)] = v
+                    k, v = None, None
+
+                elif block not in ['1-0', '0-1', '1/2-1/2', '0.5-0.5']:
+                    player = OTHER_PLAYER[player]
+                    move_data[player] = block
+
+            list_moves.append(move_data)
+
+            return pandas.DataFrame(list_moves)
 
 
     def get_fen(self, position=0):
@@ -2697,4 +2743,5 @@ class chessBoard(object):
 
 if __name__ == '__main__':
 
-    asdf = chessBoard()
+    if len(sys.argv) == 2:
+        asdf = chessBoard(sys.argv[1])
