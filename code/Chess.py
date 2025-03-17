@@ -39,6 +39,22 @@ PIECES_BLACK = {'p':IMAGE_PIECES[55-DX:55+DX, 682-DX:682+DX, :],
 
 MATERIAL_VALUES = {'P':1, 'p':1, 'N':3, 'n':3, 'B':3, 'b':3, 'R':5, 'r':5, 'Q':9, 'q':9, 'K':9999, 'k':9999}
 
+CENTER_WEIGHT_MAP = {8:{'a':1, 'b':1, 'c':1, 'd':1, 'e':1, 'f':1, 'g':1, 'h':1}, 
+                     7:{'a':1, 'b':2, 'c':2, 'd':2, 'e':2, 'f':2, 'g':2, 'h':1}, 
+                     6:{'a':1, 'b':2, 'c':3, 'd':3, 'e':3, 'f':3, 'g':2, 'h':1}, 
+                     5:{'a':1, 'b':2, 'c':3, 'd':4, 'e':4, 'f':3, 'g':2, 'h':1}, 
+                     4:{'a':1, 'b':2, 'c':3, 'd':4, 'e':4, 'f':3, 'g':2, 'h':1}, 
+                     3:{'a':1, 'b':2, 'c':3, 'd':3, 'e':3, 'f':3, 'g':2, 'h':1}, 
+                     2:{'a':1, 'b':2, 'c':2, 'd':2, 'e':2, 'f':2, 'g':2, 'h':1}, 
+                     1:{'a':1, 'b':1, 'c':1, 'd':1, 'e':1, 'f':1, 'g':1, 'h':1}}
+S = 0
+for r, files in CENTER_WEIGHT_MAP.items():
+    for f, val in files.items():
+        S += val
+for r in RANKS:
+    for f in FILES:
+        CENTER_WEIGHT_MAP[r][f] /= S
+
 OTHER_PLAYER = {'white':'black', 'black':'white'}
 
 
@@ -280,9 +296,12 @@ class chessBoard(object):
 
                     ###  printing top move to play next
                     if self.player_on_move == 'black' and True:
+                        t0 = time.time()
                         df_legal_moves = self.get_legal_moves(self.player_on_move, get_eval=True)
-                        df_legal_moves.to_csv('DF_LEGAL_MOVES_%03i.csv' % self.df_moves.index[-1], index=False)
+                        tf = time.time()
+                        #df_legal_moves.to_csv('DF_LEGAL_MOVES_%03i.csv' % self.df_moves.index[-1], index=False)
                         print('')
+                        print('time elapsed = %.1f minutes' % ((tf-t0)/60.))
                         if self.player_on_move == 'white':
                             df_legal_moves_sorted = df_legal_moves.sort_values(by=['evaluation'],ascending=False)
                             print(df_legal_moves_sorted.head(3))
@@ -365,130 +384,47 @@ class chessBoard(object):
 
         ###  computing evaluation of moves
         ###  version 2.0 : evaluating moves in pairs
-        if False and (get_eval is True):
+        if True and (get_eval is True):
 
             for idx0, row0 in df_legal_moves_0.iterrows():
                 ###  applying candidate move, getting opponent's followup moves
                 next_board_0 = self.move_piece(row0['notation'], row0['player'], board=board, redraw=False)
-                evaluation0 = self.get_eval(next_board_0)
+                evaluation0 = self.get_eval(next_board_0, OTHER_PLAYER[row0['player']])
                 df_legal_moves_1 = self.get_legal_moves(OTHER_PLAYER[player_on_move], board=next_board_0, get_eval=False)
 
                 for idx1, row1 in df_legal_moves_1.iterrows():
                     ###  applying candidate move, getting opponent's followup moves
                     next_board_1 = self.move_piece(row1['notation'], row1['player'], board=next_board_0, redraw=False)
-                    evaluation1 = self.get_eval(next_board_1)
-                    df_legal_moves_2 = self.get_legal_moves(player_on_move, board=next_board_1, get_eval=False)
+                    evaluation1 = self.get_eval(next_board_1, OTHER_PLAYER[row1['player']])
 
-                    for idx2, row2 in df_legal_moves_2.iterrows():
-                        ###  applying candidate move, getting opponent's followup moves
-                        next_board_2 = self.move_piece(row2['notation'], row2['player'], board=next_board_1, redraw=False)
-                        evaluation2 = self.get_eval(next_board_2)
-                        df_legal_moves_3 = self.get_legal_moves(OTHER_PLAYER[player_on_move], board=next_board_2, get_eval=False)
+                    df_legal_moves_1.loc[idx1, 'evaluation'] = evaluation1
+                    df_legal_moves_1.loc[idx1, 'eval_seq'] = '%.2f_%.2f' % (evaluation0, evaluation1)
+                    df_legal_moves_1.loc[idx1, 'move_seq'] = '%s_%s' % (row0['notation'], row1['notation'])
 
-                        for idx3, row3 in df_legal_moves_3.iterrows():
-                            ###  applying candidate move, getting opponent's followup moves
-                            next_board_3 = self.move_piece(row3['notation'], row3['player'], board=next_board_2, redraw=False)
-                            evaluation3 = self.get_eval(next_board_3)
-
-                            df_legal_moves_3.loc[idx3, 'evaluation'] = evaluation0 + evaluation1 + evaluation2 + evaluation3
-                            df_legal_moves_3.loc[idx3, 'move_seq'] = '%s_%s_%s_%s' % (row0['notation'], row1['notation'], row2['notation'], row3['notation'])
-
-
-                        ###  identifying best move by sum of consecutive evaluations
-                        if (row2['player'] == 'white') and (len(df_legal_moves_3)>0):
-                            best_move = df_legal_moves_3.sort_values(by=['evaluation'], ascending=False).iloc[0]
-                            df_legal_moves_2.loc[idx2, 'move_seq'] = best_move['move_seq']
-                            df_legal_moves_2.loc[idx2, 'evaluation'] = best_move['evaluation']
-                        elif (row2['player'] == 'black') and (len(df_legal_moves_3)>0):
-                            best_move = df_legal_moves_3.sort_values(by=['evaluation'], ascending=True).iloc[0]
-                            df_legal_moves_2.loc[idx2, 'move_seq'] = best_move['move_seq']
-                            df_legal_moves_2.loc[idx2, 'evaluation'] = best_move['evaluation']
-                        else:
-                            df_legal_moves_2.loc[idx2, 'evaluation'] = 0
-
-
-                    ###  identifying best move by sum of consecutive evaluations
-                    if (row1['player'] == 'white') and (len(df_legal_moves_2)>0):
-                        best_move = df_legal_moves_2.sort_values(by=['evaluation'], ascending=False).iloc[0]
-                        df_legal_moves_1.loc[idx1, 'move_seq'] = best_move['move_seq']
-                        df_legal_moves_1.loc[idx1, 'evaluation'] = best_move['evaluation']
-                    elif (row1['player'] == 'black') and (len(df_legal_moves_2)>0):
-                        best_move = df_legal_moves_2.sort_values(by=['evaluation'], ascending=True).iloc[0]
-                        df_legal_moves_1.loc[idx1, 'move_seq'] = best_move['move_seq']
-                        df_legal_moves_1.loc[idx1, 'evaluation'] = best_move['evaluation']
-                    else:
-                        df_legal_moves_1.loc[idx1, 'evaluation'] = 0
-
-
-                ###  identifying best move by sum of consecutive evaluations
+                ###  propigating best move of opponent backwards
                 if (row0['player'] == 'white') and (len(df_legal_moves_1)>0):
-                    best_move = df_legal_moves_1.sort_values(by=['evaluation'], ascending=False).iloc[0]
-                    df_legal_moves_0.loc[idx0, 'move_seq'] = best_move['move_seq']
-                    df_legal_moves_0.loc[idx0, 'evaluation'] = best_move['evaluation']
-                elif (row0['player'] == 'black') and (len(df_legal_moves_1)>0):
                     best_move = df_legal_moves_1.sort_values(by=['evaluation'], ascending=True).iloc[0]
                     df_legal_moves_0.loc[idx0, 'move_seq'] = best_move['move_seq']
+                    df_legal_moves_0.loc[idx0, 'eval_seq'] = best_move['eval_seq']
+                    df_legal_moves_0.loc[idx0, 'evaluation'] = best_move['evaluation']
+                elif (row0['player'] == 'black') and (len(df_legal_moves_1)>0):
+                    best_move = df_legal_moves_1.sort_values(by=['evaluation'], ascending=False).iloc[0]
+                    df_legal_moves_0.loc[idx0, 'move_seq'] = best_move['move_seq']
+                    df_legal_moves_0.loc[idx0, 'eval_seq'] = best_move['eval_seq']
                     df_legal_moves_0.loc[idx0, 'evaluation'] = best_move['evaluation']
                 else:
-                    df_legal_moves_0.loc[idx0, 'evaluation'] = 0
+                    df_legal_moves_0.loc[idx0, 'evaluation'] = evaluation0
 
 
-        if True and (get_eval is True):
+        if False and (get_eval is True):
             for idx, row in df_legal_moves_0.iterrows():
-                next_board = self.move_piece(row['notation'], row['player'], board=board, redraw=False)
-                move_seq, evaluation = self.evaluate_multiproc(OTHER_PLAYER[row['player']], row['notation'], next_board)
-                df_legal_moves_0.loc[idx, 'move_seq'] = move_seq
-                df_legal_moves_0.loc[idx, 'evaluation'] = evaluation
+                best_move = self.evaluate_multiproc(row['player'], row['notation'], board)
+                df_legal_moves_0.loc[idx, 'move_seq'] = best_move['move_seq']
+                df_legal_moves_0.loc[idx, 'eval_seq'] = best_move['eval_seq']
+                df_legal_moves_0.loc[idx, 'evaluation'] = best_move['evaluation']
 
 
         return df_legal_moves_0
-
-
-    def get_legal_moves_OLD(self, player_on_move, board=None):
-        '''
-        Description
-        -----------
-            Returns the list of all legal moves for the given player-on-move in the provided position.
-            If no board is given then the current board position is used.
-        '''
-
-        if board is None:
-            board = copy.deepcopy(self.chess_boards[-1])
-
-        list_moves = []
-        for r in RANKS:
-            for f in FILES:
-
-                if board[r][f] == 'P':
-                    list_moves += self.get_pawn_moves(f, r, 'white', board)
-                if board[r][f] == 'N':
-                    list_moves += self.get_knight_moves(f, r, 'white', board)
-                if board[r][f] == 'B':
-                    list_moves += self.get_bishop_moves(f, r, 'white', board)
-                if board[r][f] == 'R':
-                    list_moves += self.get_rook_moves(f, r, 'white', board)
-                if board[r][f] == 'Q':
-                    list_moves += self.get_queen_moves(f, r, 'white', board)
-                if board[r][f] == 'K':
-                    list_moves += self.get_king_moves(f, r, 'white', board)
-
-                if board[r][f] == 'p':
-                    list_moves += self.get_pawn_moves(f, r, 'black', board)
-                if board[r][f] == 'n':
-                    list_moves += self.get_knight_moves(f, r, 'black', board)
-                if board[r][f] == 'b':
-                    list_moves += self.get_bishop_moves(f, r, 'black', board)
-                if board[r][f] == 'r':
-                    list_moves += self.get_rook_moves(f, r, 'black', board)
-                if board[r][f] == 'q':
-                    list_moves += self.get_queen_moves(f, r, 'black', board)
-                if board[r][f] == 'k':
-                    list_moves += self.get_king_moves(f, r, 'black', board)
-
-        df_candidate_moves = pandas.DataFrame(list_moves).query('player=="%s"'%player_on_move)
-        df_legal_moves = self.filter_illegal_moves(df_candidate_moves, board)
-
-        return df_legal_moves
 
 
     def toggle_transparency(self, on_off):
@@ -559,6 +495,55 @@ class chessBoard(object):
             list_moves.append(move_data)
 
             return pandas.DataFrame(list_moves)
+
+
+    def load_fen(self, fen):
+
+        #r3k2r/3n1p1p/p3p1p1/1b1pP3/2nP1P2/2qB1Q1P/2P1N1PK/R1B2R2 b kq - 4 22
+        ###
+        ###  Mate in two:
+        ###  r3r1k1/p1p2ppp/1p4q1/8/1PP5/P7/4QPPP/R3R1K1 w - - 0 1
+        ###
+        ###  Mate in one:
+        ###  5r1k/6pp/8/8/8/8/6PP/5R1K w - - 0 1
+
+        fen_partitions = fen.strip().split(' ')
+        fen_board = fen_partitions[0]
+        fen_player_on_move = fen_partitions[1]
+        fen_castle_rights = fen_partitions[2]
+        fen_ep_target = fen_partitions[3]
+        fen_halfmove_count = fen_partitions[4]
+        fen_move_count = fen_partitions[5]
+
+        board = {}
+        for i_rank, fen_rank in enumerate(fen_board.split('/')):
+
+            i_file = 0
+            rank = {}
+            for char in fen_rank:
+
+                if char in ['1', '2', '3', '4', '5' ,'6', '7', '8']:
+
+                    for i in range(int(char)):
+                        rank[FILES[i_file]] = ' '
+                        i_file += 1
+
+                else:
+                    rank[FILES[i_file]] = char
+                    i_file += 1
+
+            board[8-i_rank] = rank
+
+
+        self.chess_boards = [board]
+        self.player_on_move = {'w':'white', 'b':'black'}[fen_player_on_move]
+        self.castle_rights = fen_castle_rights
+        self.halfmove_count = int(fen_halfmove_count)
+
+        i = len(self.df_moves)
+        self.df_moves.loc[i, 'ep_target'] = fen_ep_target
+
+        self._redraw_board()
 
 
     def get_fen(self, position=0):
@@ -1496,165 +1481,68 @@ class chessBoard(object):
             print('-'*(4*8+1))
 
 
-    def evaluate_depth2_single_proc(self, i_proc, player, move_text, board, df_legal_moves_1):
-        '''
-        Evaluate the current position of the board with `player` to move
-        '''
+    def evaluate_depth1_single_proc(self, i_proc, board, df_legal_moves_0):
 
-        ###  getting all following legal moves
-        for idx_1, row_move_1 in df_legal_moves_1.iterrows():
 
-            ###  if move involves capturing the king skip
-            next_board_1 = self.move_piece(row_move_1['notation'], player, board=board, redraw=False)
-            if json.dumps(next_board_1).lower().count('k') < 2:
-                if json.dumps(next_board_1).count('K') == 0:
-                    df_legal_moves_1.loc[idx_1, 'evaluation'] = -9999
-                else:
-                    df_legal_moves_1.loc[idx_1, 'evaluation'] = 9999
-                continue
 
-            df_legal_moves_2 = self.get_legal_moves(OTHER_PLAYER[player], board=next_board_1, get_eval=False)
-            for idx_2, row_move_2 in df_legal_moves_2.iterrows():
+        for idx0, row0 in df_legal_moves_0.iterrows():
+            ###  applying candidate move, getting opponent's followup moves
+            next_board_0 = self.move_piece(row0['notation'], row0['player'], board=board, redraw=False)
+            evaluation0 = self.get_eval(next_board_0, OTHER_PLAYER[row0['player']])
+            df_legal_moves_1 = self.get_legal_moves(OTHER_PLAYER[row0['player']], board=next_board_0, get_eval=False)
 
-                ###  if move involves capturing the king skip
-                next_board_2 = self.move_piece(row_move_2['notation'], OTHER_PLAYER[player], board=next_board_1, redraw=False)
-                if json.dumps(next_board_2).lower().count('k') < 2:
-                    if json.dumps(next_board_2).count('K') == 0:
-                        df_legal_moves_2.loc[idx_2, 'evaluation'] = -9999
-                    else:
-                        df_legal_moves_2.loc[idx_2, 'evaluation'] = 9999
-                    continue
+            for idx1, row1 in df_legal_moves_1.iterrows():
+                ###  applying candidate move, getting opponent's followup moves
+                next_board_1 = self.move_piece(row1['notation'], row1['player'], board=next_board_0, redraw=False)
+                evaluation1 = self.get_eval(next_board_1, OTHER_PLAYER[row1['player']])
 
-                ###  calculating evaluation metrics
-                eval_metrics = self.calc_evaluation_metrics(next_board_2)
-                evaluation = self.get_eval(next_board_2)
-                df_legal_moves_2.loc[idx_2, 'evaluation'] = evaluation
-                df_legal_moves_2.loc[idx_2, 'move_seq'] = '%s_%s_%s' % (move_text, row_move_1['notation'], row_move_2['notation'])
+                df_legal_moves_1.loc[idx1, 'evaluation'] = evaluation1
+                df_legal_moves_1.loc[idx1, 'eval_seq'] = '%.2f_%.2f' % (evaluation0, evaluation1)
+                df_legal_moves_1.loc[idx1, 'move_seq'] = '%s_%s' % (row0['notation'], row1['notation'])
 
-            ###  saving intermediate evaluation
-            #fout = 'DF_LEGAL_MOVES_prevmoves_%s_%s_PROC%02i.csv' % (move_text, row_move_1['notation'], i_proc)
-            #df_legal_moves_2.to_csv(fout, index=None)
-
-            if (OTHER_PLAYER[player] == 'white') and (len(df_legal_moves_2)>0):
-                best_move = df_legal_moves_2.sort_values(by=['evaluation'], ascending=False).iloc[0]
-                df_legal_moves_1.loc[idx_1, 'move_seq'] = best_move['move_seq']
-                df_legal_moves_1.loc[idx_1, 'evaluation'] = best_move['evaluation']
-            elif (OTHER_PLAYER[player] == 'black') and (len(df_legal_moves_2)>0):
-                best_move = df_legal_moves_2.sort_values(by=['evaluation'], ascending=True).iloc[0]
-                df_legal_moves_1.loc[idx_1, 'move_seq'] = best_move['move_seq']
-                df_legal_moves_1.loc[idx_1, 'evaluation'] = best_move['evaluation']
+            ###  propigating best move of opponent backwards
+            if (row0['player'] == 'white') and (len(df_legal_moves_1)>0):
+                best_move = df_legal_moves_1.sort_values(by=['evaluation'], ascending=True).iloc[0]
+                df_legal_moves_0.loc[idx0, 'move_seq'] = best_move['move_seq']
+                df_legal_moves_0.loc[idx0, 'eval_seq'] = best_move['eval_seq']
+                df_legal_moves_0.loc[idx0, 'evaluation'] = best_move['evaluation']
+            elif (row0['player'] == 'black') and (len(df_legal_moves_1)>0):
+                best_move = df_legal_moves_1.sort_values(by=['evaluation'], ascending=False).iloc[0]
+                df_legal_moves_0.loc[idx0, 'move_seq'] = best_move['move_seq']
+                df_legal_moves_0.loc[idx0, 'eval_seq'] = best_move['eval_seq']
+                df_legal_moves_0.loc[idx0, 'evaluation'] = best_move['evaluation']
             else:
-                df_legal_moves_1.loc[idx_1, 'evaluation'] = 0
+                df_legal_moves_0.loc[idx0, 'evaluation'] = evaluation0
 
         ###  saving results
-        if len(df_legal_moves_1) > 0:
-            df_legal_moves_1.to_csv('DF_LEGAL_MOVES_PROC%02i.csv'%i_proc, index=None)
+        if len(df_legal_moves_0) > 0:
+            df_legal_moves_0.to_csv('DF_LEGAL_MOVES_PROC%02i.csv'%i_proc, index=None)
 
 
-    def evaluate_depth3_single_proc(self, i_proc, player, move_text, board, df_legal_moves_1):
+    def evaluate_multiproc(self, player, move_text, board):
         '''
-        Evaluate the current position of the board with `player` to move
-        '''
-
-
-        ###  getting all following legal moves
-        for idx_1, row_move_1 in df_legal_moves_1.iterrows():
-
-            ###  if move involves capturing the king skip
-            next_board_1 = self.move_piece(row_move_1['notation'], player, board=board, redraw=False)
-            if json.dumps(next_board_1).lower().count('k') < 2:
-                if json.dumps(next_board_1).count('K') == 0:
-                    df_legal_moves_1.loc[idx_1, 'evaluation'] = -9999
-                else:
-                    df_legal_moves_1.loc[idx_1, 'evaluation'] = 9999
-                continue
-
-            df_legal_moves_2 = self.get_legal_moves(OTHER_PLAYER[player], board=next_board_1, get_eval=False)
-            for idx_2, row_move_2 in df_legal_moves_2.iterrows():
-
-                ###  if move involves capturing the king skip
-                next_board_2 = self.move_piece(row_move_2['notation'], OTHER_PLAYER[player], board=next_board_1, redraw=False)
-                if json.dumps(next_board_2).lower().count('k') < 2:
-                    if json.dumps(next_board_2).count('K') == 0:
-                        df_legal_moves_2.loc[idx_2, 'evaluation'] = -9999
-                    else:
-                        df_legal_moves_2.loc[idx_2, 'evaluation'] = 9999
-                    continue
-
-                df_legal_moves_3 = self.get_legal_moves(player, board=next_board_2, get_eval=False)
-                for idx_3, row_move_3 in df_legal_moves_3.iterrows():
-
-                    ###  if move involves capturing the king skip
-                    next_board_3 = self.move_piece(row_move_3['notation'], player, board=next_board_2, redraw=False)
-                    if json.dumps(next_board_3).lower().count('k') < 2:
-                        if json.dumps(next_board_3).count('K') == 0:
-                            df_legal_moves_3.loc[idx_3, 'evaluation'] = -9999
-                        else:
-                            df_legal_moves_3.loc[idx_3, 'evaluation'] = 9999
-                        continue
-
-                    ###  calculating evaluation metrics
-                    eval_metrics = self.calc_evaluation_metrics(next_board_3)
-                    evaluation = self.get_eval(next_board_3)
-                    df_legal_moves_3.loc[idx_3, 'evaluation'] = evaluation
-                    df_legal_moves_3.loc[idx_3, 'move_seq'] = '%s_%s_%s_%s' % (move_text, row_move_1['notation'], row_move_2['notation'], row_move_3['notation'])
-
-
-                ###  propagating best move from level 3 to level 2
-                if (player == 'white') and (len(df_legal_moves_3)>0):
-                    best_move = df_legal_moves_3.sort_values(by=['evaluation'], ascending=False).iloc[0]
-                    df_legal_moves_2.loc[idx_2, 'move_seq'] = best_move['move_seq']
-                    df_legal_moves_2.loc[idx_2, 'evaluation'] = best_move['evaluation']
-                elif (player == 'black') and (len(df_legal_moves_3)>0):
-                    best_move = df_legal_moves_3.sort_values(by=['evaluation'], ascending=True).iloc[0]
-                    df_legal_moves_2.loc[idx_2, 'move_seq'] = best_move['move_seq']
-                    df_legal_moves_2.loc[idx_2, 'evaluation'] = best_move['evaluation']
-                else:
-                    df_legal_moves_2.loc[idx_2, 'evaluation'] = 0
-
-            ###  propagating best move from level 2 to level 1
-            if (OTHER_PLAYER[player] == 'white') and (len(df_legal_moves_2)>0):
-                best_move = df_legal_moves_2.sort_values(by=['evaluation'], ascending=False).iloc[0]
-                df_legal_moves_1.loc[idx_1, 'move_seq'] = best_move['move_seq']
-                df_legal_moves_1.loc[idx_1, 'evaluation'] = best_move['evaluation']
-            elif (OTHER_PLAYER[player] == 'black') and (len(df_legal_moves_2)>0):
-                best_move = df_legal_moves_2.sort_values(by=['evaluation'], ascending=True).iloc[0]
-                df_legal_moves_1.loc[idx_1, 'move_seq'] = best_move['move_seq']
-                df_legal_moves_1.loc[idx_1, 'evaluation'] = best_move['evaluation']
-            else:
-                df_legal_moves_1.loc[idx_1, 'evaluation'] = 0
-
-        ###  saving results
-        if len(df_legal_moves_1) > 0:
-            df_legal_moves_1.to_csv('DF_LEGAL_MOVES_PROC%02i.csv'%i_proc, index=None)
-
-
-    def evaluate_multiproc(self, player, move_text, board=None):
-        '''
-        Evaluate the current position of the board with `player` to move
+        Evaluate the provided move from player on the provided board
         '''
 
-        if board is None:
-            board = copy.deepcopy(self.chess_boards[-1])
-
-
-        ###  getting all legal moves
-        df_legal_moves = self.get_legal_moves(player, board=board, get_eval=False)
+        ###  applying the provided move, generating next board position
+        ###  getting opponent's following legal moves
+        next_board_0 = self.move_piece(move_text, player, board=board, redraw=False)
+        df_legal_moves_0 = self.get_legal_moves(OTHER_PLAYER[player], board=next_board_0, get_eval=False)
 
         processes = []
         for i_proc in range(CPU_COUNT):
 
             ###  don't spawn more processes than there are candidate moves
-            if i_proc == len(df_legal_moves):
+            if i_proc == len(df_legal_moves_0):
                 break
 
             ###  initializing process on segment of candidatate moves
-            ii = range(i_proc, len(df_legal_moves), CPU_COUNT)
-            df_legal_moves_i = df_legal_moves.loc[ii]
+            ii = range(i_proc, len(df_legal_moves_0), CPU_COUNT)
+            df_legal_moves_i = df_legal_moves_0.loc[ii]
 
             ctx = multiprocessing.get_context('spawn')
-            args = (i_proc, player, move_text, board, df_legal_moves_i)
-            proc = multiprocessing.Process(target=self.evaluate_depth2_single_proc, args=args)
+            args = (i_proc, next_board_0, df_legal_moves_i)
+            proc = multiprocessing.Process(target=self.evaluate_depth1_single_proc, args=args)
             processes.append(proc)
             proc.start()
 
@@ -1671,23 +1559,33 @@ class chessBoard(object):
 
         if player == 'white':
             best_move = df_legal_moves_w_eval.sort_values(by=['evaluation'], ascending=False).iloc[0]
-            return (best_move['move_seq'], best_move['evaluation'])
+            return best_move
         else:
             best_move = df_legal_moves_w_eval.sort_values(by=['evaluation'], ascending=True).iloc[0]
-            return (best_move['move_seq'], best_move['evaluation'])
+            return best_move
 
 
-    def get_eval(self, board):
+    def get_eval(self, board, player_on_move):
 
-        eval_metrics = self.calc_evaluation_metrics(board)
-        evaluation = 0
-        evaluation += eval_metrics['delta_material']
-        evaluation += eval_metrics['delta_vision'] / 10
-        evaluation += eval_metrics['delta_0x_defends'] / 1.
-        #evaluation += eval_metrics['delta_overattacks'] / 1.
+        ###  determining if position is checkmate
+        df_legal_moves = self.get_legal_moves(player_on_move, board=board, get_eval=False)
+        if (len(df_legal_moves) == 0) and (player_on_move == 'white'):
+            evaluation = -9999
+
+        elif (len(df_legal_moves) == 0) and (player_on_move == 'black'):
+            evaluation = 9999
+
+        else:
+            eval_metrics = self.calc_evaluation_metrics(board)
+            evaluation = 0
+            evaluation += eval_metrics['delta_material']
+            #evaluation += eval_metrics['delta_vision'] / 10
+            evaluation += eval_metrics['delta_central_control'] / 1.
+            #evaluation += eval_metrics['delta_0x_defends'] / 1.
+            #evaluation += eval_metrics['delta_overattacks'] / 1.
+
 
         return evaluation
-
 
 
     def calc_evaluation_metrics(self, board):
@@ -1697,6 +1595,7 @@ class chessBoard(object):
         delta_[N]x_attacks ----- Difference in number of squares occupied by opponent pieces targeted `N` times
         delta_[N]x_defends ----- Difference in number of squares occupied by player's own pieces targeted `N` times
         delta_overattacks ------ Difference in number of squares where player's attackers outnumber opponent's defeenders
+        delta_central_control -- Difference in cumulative attacks weighted by CENTER_WEIGHT_MAP
         '''
 
 
@@ -1718,10 +1617,14 @@ class chessBoard(object):
         total_vision_by_white, total_vision_by_black = 0, 0
         n_0x_defends_by_white, n_0x_defends_by_black = 0, 0
         n_overattacks_by_white, n_overattacks_by_black = 0, 0
+        central_control_by_white, central_control_by_black = 0, 0
         for r in RANKS:
             for f in FILES:
                 total_vision_by_white += (n_targets_by_white[r][f] > 0)
                 total_vision_by_black += (n_targets_by_black[r][f] > 0)
+
+                central_control_by_white += n_targets_by_white[r][f] * CENTER_WEIGHT_MAP[r][f]
+                central_control_by_black += n_targets_by_black[r][f] * CENTER_WEIGHT_MAP[r][f]
 
                 if board[r][f] in PIECES_WHITE.keys():
                     if n_targets_by_white[r][f] == 0: n_0x_defends_by_white += 1
@@ -1738,6 +1641,7 @@ class chessBoard(object):
         eval_metrics['delta_vision'] = (total_vision_by_white - total_vision_by_black)
         eval_metrics['delta_0x_defends'] = (n_0x_defends_by_black - n_0x_defends_by_white)
         eval_metrics['delta_overattacks'] = (n_overattacks_by_white - n_overattacks_by_black)
+        eval_metrics['delta_central_control'] = (central_control_by_white - central_control_by_black)
 
         return eval_metrics
 
