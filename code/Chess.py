@@ -14,6 +14,8 @@ import matplotlib
 import multiprocessing
 from matplotlib import pyplot
 
+import playground_cython
+
 CPU_COUNT = multiprocessing.cpu_count()
 
 RANKS = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -40,6 +42,8 @@ PIECES_BLACK = {'p':IMAGE_PIECES[55-DX:55+DX, 682-DX:682+DX, :],
 
 MATERIAL_VALUES = {'P':1, 'p':1, 'N':3, 'n':3, 'B':3, 'b':3, 'R':5, 'r':5, 'Q':9, 'q':9, 'K':9999, 'k':9999}
 
+PIECE_IDS = {' ':0, 'P':1, 'p':-1, 'N':2, 'n':-2, 'B':3, 'b':-3, 'R':4, 'r':-4, 'Q':5, 'q':-5, 'K':6, 'k':-6}
+
 CENTER_WEIGHT_MAP = {8:{'a':1, 'b':1, 'c':1, 'd':1, 'e':1, 'f':1, 'g':1, 'h':1}, 
                      7:{'a':1, 'b':2, 'c':2, 'd':2, 'e':2, 'f':2, 'g':2, 'h':1}, 
                      6:{'a':1, 'b':2, 'c':3, 'd':3, 'e':3, 'f':3, 'g':2, 'h':1}, 
@@ -57,6 +61,7 @@ for r in RANKS:
         CENTER_WEIGHT_MAP[r][f] /= S
 
 OTHER_PLAYER = {'white':'black', 'black':'white'}
+PLAYER_2_INT = {'white':1, 'w':1, 'black':-1, 'b':-1}
 
 
 class chessBoard(object):
@@ -178,6 +183,21 @@ class chessBoard(object):
 
         ###  playing game against self
         if False:
+            ###  1. e3 e6 2. Qg4 h5 3. Qg3 Rh6 4. Qe5 Nb8c6 5. Qe5f4 e5 6. Qf4f5 d5 7. Qf5f3 Bc8g4 
+            self.move_piece('e3', self.player_on_move, board=self.chess_boards[-1], redraw=True)
+            self.player_on_move = 'black'
+            self.move_piece('e6', self.player_on_move, board=self.chess_boards[-1], redraw=True)
+            self.player_on_move = 'white'
+            self.move_piece('Qg4', self.player_on_move, board=self.chess_boards[-1], redraw=True)
+            self.player_on_move = 'black'
+            self.move_piece('h5', self.player_on_move, board=self.chess_boards[-1], redraw=True)
+            self.player_on_move = 'white'
+            self.move_piece('Qg3', self.player_on_move, board=self.chess_boards[-1], redraw=True)
+            self.player_on_move = 'black'
+            self.move_piece('Rh6', self.player_on_move, board=self.chess_boards[-1], redraw=True)
+            self.player_on_move = 'white'
+            self.move_piece('Qe5', self.player_on_move, board=self.chess_boards[-1], redraw=True)
+            self.player_on_move = 'black'
 
             timestamps = [time.time()]
             while True:
@@ -204,6 +224,7 @@ class chessBoard(object):
                 timestamps.append(time.time())
                 print('time to calc move  = %.1f minutes' % ((timestamps[-1]-timestamps[-2])/60.))
                 print('total time elapsed = %.1f minutes' % ((timestamps[-1]-timestamps[0])/60.))
+                print('')
 
 
         cid = self.fig.canvas.mpl_connect('button_press_event', self._onClick)
@@ -296,7 +317,7 @@ class chessBoard(object):
 
 
                     ###  printing top move to play next
-                    if self.player_on_move == 'black' and True:
+                    if self.player_on_move == 'black' and False:
                         t0 = time.time()
                         df_legal_moves = self.get_legal_moves(self.player_on_move, get_eval=True)
                         tf = time.time()
@@ -418,8 +439,9 @@ class chessBoard(object):
 
 
         if True and (get_eval is True):
+            print('Found %i legal moves' % len(df_legal_moves_0))
             for idx, row in df_legal_moves_0.iterrows():
-                print('Evaluating move "%s" py "%s"' % (row['notation'], row['player']))
+                print('Evaluating move "%s" by "%s"' % (row['notation'], row['player']))
                 evaluation0 = self.get_eval(board, row['player'])
                 best_move = self.evaluate_multiproc(row['player'], row['notation'], board)
                 df_legal_moves_0.loc[idx, 'move_seq'] = '%s_%s' % (row['notation'], best_move['move_seq'])
@@ -509,6 +531,9 @@ class chessBoard(object):
         ###
         ###  Mate in one:
         ###  5r1k/6pp/8/8/8/8/6PP/5R1K w - - 0 1
+        ###
+        ###  Position where top 3 engine moves are eval~0 and rest are eval<-2.5
+        ###  r3k2r/pbpnqp2/1p1ppn1p/8/2PPP1p1/3B1NB1/P1P1QPPP/R4RK1 w kq - 0 13
 
         fen_partitions = fen.strip().split(' ')
         fen_board = fen_partitions[0]
@@ -1471,6 +1496,15 @@ class chessBoard(object):
         pyplot.draw()
 
 
+    def get_int_chessboard(self, board=None):
+        if board is None:
+            board = copy.deepcopy(self.chess_boards[-1])
+
+        int_board = numpy.array([[PIECE_IDS[board[r][f]] for f in FILES] for r in RANKS], dtype=int)
+
+        return int_board
+
+
     def print_chess_board(self, board=None):
         if board is None:
             board = copy.deepcopy(self.chess_boards[-1])
@@ -1599,8 +1633,8 @@ class chessBoard(object):
         fnames = glob.glob('DF_LEGAL_MOVES_PROC*csv')
         df_legal_moves_w_eval = pandas.concat([pandas.read_csv(f) for f in fnames])
         for f in fnames:
-            #os.remove(f)
-            shutil.move(f, f.replace('DF_LEGAL_MOVES_', 'DF_LEGAL_MOVES_%s_'%move_text))
+            os.remove(f)
+            #shutil.move(f, f.replace('DF_LEGAL_MOVES_', 'DF_LEGAL_MOVES_%s_'%move_text))
 
 
         if player == 'white':
@@ -2436,6 +2470,36 @@ class chessBoard(object):
         return moves_dict
 
 
+    def get_pawn_moves_cy(self, f, r, player, int_board):
+        ep_target = 0
+        moves = playground_cython.get_pawn_moves(f, r, player, int_board, ep_target)
+        return moves
+
+    def get_knight_moves_cy(self, f, r, player, int_board):
+        moves = playground_cython.get_knight_moves(f, r, player, int_board)
+        return moves
+
+    def get_bishop_moves_cy(self, f, r, player, int_board):
+        moves = playground_cython.get_bishop_moves(f, r, player, int_board)
+        return moves
+
+    def get_rook_moves_cy(self, f, r, player, int_board):
+        moves = playground_cython.get_rook_moves(f, r, player, int_board)
+        return moves
+
+    def get_queen_moves_cy(self, f, r, player, int_board):
+        moves = playground_cython.get_queen_moves(f, r, player, int_board)
+        return moves
+
+    def get_king_moves_cy(self, f, r, player, int_board):
+        moves = playground_cython.get_king_moves(f, r, player, int_board)
+        return moves
+
+    def get_legal_moves_cy(self, player_on_move, int_board, ep_target):
+        moves = playground_cython.get_legal_moves(player_on_move, int_board, ep_target, get_eval=0)
+        return moves
+
+
     def filter_illegal_moves(self, df_candidate_moves, board=None):
 
         if board is None:
@@ -2525,7 +2589,7 @@ class chessBoard(object):
         for r in RANKS:
             for f in FILES:
 
-                ###  hangling pawn attacks
+                ###  handling pawn attacks
                 if (board[r][f] == 'P') and (f != 'h'):
                     n_attacks_by_white[r+1][FILES[FILES.index(f)+1]] += 1
                 if (board[r][f] == 'P') and (f != 'a'):
@@ -2684,6 +2748,9 @@ class chessBoard(object):
                                 n_attacks_by_black[r2][f2] += 1
 
         return (n_attacks_by_white, n_attacks_by_black)
+
+    def get_attacked_squares_cy(self, int_board):
+        return playground_cython.get_attacked_squares(int_board)
 
 
     def print_n_attacks(self, board=None):
