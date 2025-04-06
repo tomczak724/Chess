@@ -1151,6 +1151,55 @@ def get_attacked_squares(long[:,:] board):
     return (n_attacks_by_white, n_attacks_by_black)
 
 
+def move_piece(long[:] move, long[:,:] board):
+    '''
+    '''
+
+    cdef int piece
+    cdef int f_start, r_start, f_end, r_end
+
+    ###  parsing start / end squares and piece being moved
+    r_start = move[1] % 10 - 1
+    f_start = (move[1] - r_start) // 10 - 1
+    piece = board[r_start][f_start]
+    r_end = move[2] % 10 - 1
+    f_end = (move[2] - r_start) // 10 - 1
+
+
+    ###  if promotion
+    if move[5] != 0:
+        board[r_end][f_end] = move[5]
+        board[r_start][f_start] = 0
+
+    ###  if en passaant
+    elif move[3] == 2:
+        board[r_end][f_end] = piece
+        board[r_start][f_start] = 0
+        board[r_end][f_start] = 0
+
+    ###  if castling
+    elif move[4] == 100:
+        board[r_start][4] = 0
+        board[r_start][5] = 4
+        board[r_start][6] = 6
+        board[r_start][7] = 0
+    elif move[4] == 1000:
+        board[r_start][4] = 0
+        board[r_start][3] = 4
+        board[r_start][2] = 6
+        board[r_start][0] = 0
+
+    ###  else ordinary move
+    else:
+        print('moving piece', piece)
+        print('from', f_start, r_start)
+        print('  to', f_end, r_end)
+        board[r_end][f_end] = piece
+        board[r_start][f_start] = 0
+
+    return board
+
+
 
 '''
 if True:
