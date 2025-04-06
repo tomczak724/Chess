@@ -669,40 +669,6 @@ class chessBoard(object):
         return fen_board_position
 
 
-    def next(self, n=1, verbose=False):
-
-        for i in range(n):
-
-            if verbose is True:
-                print(self.df_pgn.query('turn==%s'%self.current_move)[self.player_on_move].iloc[0])
-            self.move_piece(self.df_pgn.query('turn==%s'%self.current_move)[self.player_on_move].iloc[0], 
-                            self.player_on_move, 
-                            redraw=True)
-
-            if self.player_on_move == 'white':
-                self.previous_move['player'] = 'white'
-                self.previous_move['move'] = self.df_pgn.query('turn==%s'%self.current_move)[self.player_on_move].iloc[0]
-                self.player_on_move = 'black'
-            else:
-                self.player_on_move = 'white'
-                self.previous_move['move'] = self.df_pgn.query('turn==%s'%self.current_move)[self.player_on_move].iloc[0]
-                self.previous_move['player'] = 'black'
-                self.current_move += 1
-
-
-    def undo(self, n=1):
-
-        for i in range(n):
-
-            ###  break if returned to the beginning
-            if len(self.chess_boards) == 1:
-                break
-
-            old_board = self.chess_boards.pop(len(self.chess_boards)-1)
-
-        self._redraw_board()
-
-
     def move_piece(self, move_text, player, board=None, redraw=False):
         '''
         Description
