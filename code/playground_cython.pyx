@@ -1,4 +1,5 @@
 
+import numpy
 
 
 def get_pawn_moves(int f, int r, int player, long[:,:] board, int ep_target=0):
@@ -36,7 +37,7 @@ def get_pawn_moves(int f, int r, int player, long[:,:] board, int ep_target=0):
             column 2 : Start square of piece (e.g. 34 for "c4")
             column 3 : End square of piece (e.g. 67 for "f7")
             column 4 : Capture flag (0=False, 1=True, 2=en passant)
-            column 5 : Castling flag (0=False, 1=True)
+            column 5 : Castling flag (0=False, 100=kingside, 1000=queenside)
             column 6 : Promotion flag (ID of piece being promoted to)
     '''
 
@@ -235,7 +236,7 @@ def get_knight_moves(int f, int r, int player, long[:,:] board):
             column 2 : Start square of piece (e.g. 34 for "c4")
             column 3 : End square of piece (e.g. 67 for "f7")
             column 4 : Capture flag (0=False, 1=True, 2=en passant)
-            column 5 : Castling flag (0=False, 1=True)
+            column 5 : Castling flag (0=False, 100=kingside, 1000=queenside)
             column 6 : Promotion flag (ID of piece being promoted to)
     '''
 
@@ -355,7 +356,7 @@ def get_bishop_moves(int f, int r, int player, long[:,:] board):
             column 2 : Start square of piece (e.g. 34 for "c4")
             column 3 : End square of piece (e.g. 67 for "f7")
             column 4 : Capture flag (0=False, 1=True, 2=en passant)
-            column 5 : Castling flag (0=False, 1=True)
+            column 5 : Castling flag (0=False, 100=kingside, 1000=queenside)
             column 6 : Promotion flag (ID of piece being promoted to)
     '''
 
@@ -505,7 +506,7 @@ def get_rook_moves(int f, int r, int player, long[:,:] board):
             column 2 : Start square of piece (e.g. 34 for "c4")
             column 3 : End square of piece (e.g. 67 for "f7")
             column 4 : Capture flag (0=False, 1=True, 2=en passant)
-            column 5 : Castling flag (0=False, 1=True)
+            column 5 : Castling flag (0=False, 100=kingside, 1000=queenside)
             column 6 : Promotion flag (ID of piece being promoted to)
     '''
 
@@ -640,7 +641,7 @@ def get_queen_moves(int f, int r, int player, long[:,:] board):
             column 2 : Start square of piece (e.g. 34 for "c4")
             column 3 : End square of piece (e.g. 67 for "f7")
             column 4 : Capture flag (0=False, 1=True, 2=en passant)
-            column 5 : Castling flag (0=False, 1=True)
+            column 5 : Castling flag (0=False, 100=kingside, 1000=queenside)
             column 6 : Promotion flag (ID of piece being promoted to)
     '''
 
@@ -703,7 +704,7 @@ def get_king_moves(int f, int r, int player, long[:,:] board):
             column 2 : Start square of piece (e.g. 34 for "c4")
             column 3 : End square of piece (e.g. 67 for "f7")
             column 4 : Capture flag (0=False, 1=True, 2=en passant)
-            column 5 : Castling flag (0=False, 1=True)
+            column 5 : Castling flag (0=False, 100=kingside, 1000=queenside)
             column 6 : Promotion flag (ID of piece being promoted to)
 
             Note: 100 represents king-side castling and 1000
@@ -838,9 +839,6 @@ def get_king_moves(int f, int r, int player, long[:,:] board):
         moves[move_counter][4] = 1000
         move_counter += 1
 
-
-
-
     return moves
 
 
@@ -876,7 +874,7 @@ def get_legal_moves(int player_on_move, long[:,:] board, int ep_target, bint get
             column 2 : Start square of piece (e.g. 34 for "c4")
             column 3 : End square of piece (e.g. 67 for "f7")
             column 4 : Capture flag (0=False, 1=True, 2=en passant)
-            column 5 : Castling flag (0=False, 1=True)
+            column 5 : Castling flag (0=False, 100=kingside, 1000=queenside)
             column 6 : Promotion flag (ID of piece being promoted to)
 
             Note: 100 represents king-side castling and 1000
@@ -966,115 +964,96 @@ def get_legal_moves(int player_on_move, long[:,:] board, int ep_target, bint get
                         all_moves[move_counter][j] = king_moves[i][j]
                     move_counter += 1
 
-    return all_moves
+    ###  filtering out illegal moves
+    cdef int[200][6] legal_moves  # NOTE: 200 is a rough guess of the max number of candidate moves
+    for i in range(200):
+        for j in range(6):
+            legal_moves[i][j] = 0
+
+    legal_moves = filter_illegal_moves(numpy.array(all_moves), board)
+
+    return legal_moves
 
 
-def get_attacked_squares(long[:,:] board):
+def get_attacked_squares(int player, long[:,:] board):
+    '''
+    Parameters
+    ----------
+        player : int
+            Either 1 for white or -1 for black
+
+        board : 2d-array of ints
+            Full layout of chessboard
+            0 = vacant square
+            1, 2, 3, 4, 5, 6 = P, N, B, R, Q, K
+            -1, -2, -3, -4, -5, -6 = p, n, b, r, q, k
+
+    Returns
+    -------
+        n_attacks_per_square : 2d-array of ints
+            An 8x8 array of representing the number of times each
+            given square of the board is attacked by `player` pieces
+    '''
 
     cdef int r, f, r2, f2, d
-    cdef int[8][8] n_attacks_by_white
-    cdef int[8][8] n_attacks_by_black
-
+    cdef int[8][8] n_attacks_per_square
     cdef int i, j
     for i in range(8):
         for j in range(8):
-            n_attacks_by_white[i][j] = 0
-            n_attacks_by_black[i][j] = 0
+            n_attacks_per_square[i][j] = 0
 
 
     ###  iterating over squares
     for r in range(8):
         for f in range(8):
-            
+
             ###  handling pawn attacks
-            if (board[r][f] == 1) and (f < 7):
-                n_attacks_by_white[r+1][f+1] += 1
-            if (board[r][f] == 1) and (f > 0):
-                n_attacks_by_white[r+1][f-1] += 1
-            if (board[r][f] == -1) and (f < 7):
-                n_attacks_by_black[r-1][f+1] += 1
-            if (board[r][f] == -1) and (f > 0):
-                n_attacks_by_black[r-1][f-1] += 1
+            if (board[r][f] == player) and (f < 7):
+                n_attacks_per_square[r+player][f+1] += 1
+            if (board[r][f] == player) and (f > 0):
+                n_attacks_per_square[r+player][f-1] += 1
 
 
             ###  handling attacks by knights
-            if (board[r][f] == 2):
+            if (board[r][f] == 2*player):
                 if (2 <= r) and (1 <= f):
-                    n_attacks_by_white[r-2][f-1] += 1
+                    n_attacks_per_square[r-2][f-1] += 1
                 if (1 <= r) and (2 <= f):
-                    n_attacks_by_white[r-1][f-2] += 1
+                    n_attacks_per_square[r-1][f-2] += 1
                 if (r <= 6) and (2 <= f):
-                    n_attacks_by_white[r+1][f-2] += 1
+                    n_attacks_per_square[r+1][f-2] += 1
                 if (r <= 5) and (1 <= f):
-                    n_attacks_by_white[r+2][f-1] += 1
+                    n_attacks_per_square[r+2][f-1] += 1
                 if (r <= 5) and (f <= 6):
-                    n_attacks_by_white[r+2][f+1] += 1
+                    n_attacks_per_square[r+2][f+1] += 1
                 if (r <= 6) and (f <= 5):
-                    n_attacks_by_white[r+1][f+2] += 1
+                    n_attacks_per_square[r+1][f+2] += 1
                 if (1 <= r) and (f <= 5):
-                    n_attacks_by_white[r-1][f+2] += 1
+                    n_attacks_per_square[r-1][f+2] += 1
                 if (2 <= r) and (f <= 6):
-                    n_attacks_by_white[r-2][f+1] += 1
-            elif (board[r][f] == -2):
-                if (2 <= r) and (1 <= f):
-                    n_attacks_by_black[r-2][f-1] += 1
-                if (1 <= r) and (2 <= f):
-                    n_attacks_by_black[r-1][f-2] += 1
-                if (r <= 6) and (2 <= f):
-                    n_attacks_by_black[r+1][f-2] += 1
-                if (r <= 5) and (1 <= f):
-                    n_attacks_by_black[r+2][f-1] += 1
-                if (r <= 5) and (f <= 6):
-                    n_attacks_by_black[r+2][f+1] += 1
-                if (r <= 6) and (f <= 5):
-                    n_attacks_by_black[r+1][f+2] += 1
-                if (1 <= r) and (f <= 5):
-                    n_attacks_by_black[r-1][f+2] += 1
-                if (2 <= r) and (f <= 6):
-                    n_attacks_by_black[r-2][f+1] += 1
+                    n_attacks_per_square[r-2][f+1] += 1
 
 
             ###  handling attacks by rooks (and queen)
-            if (board[r][f] == 4) or (board[r][f] == 5):
+            if (board[r][f] == 4*player) or (board[r][f] == 5*player):
                 ###  right files
                 for f2 in range(f+1, 8):
-                    n_attacks_by_white[r][f2] += 1
+                    n_attacks_per_square[r][f2] += 1
                     if board[r][f2] != 0:
                         break
                 ###  down ranks
                 for r2 in range(r-1, -1, -1):
-                    n_attacks_by_white[r2][f] += 1
+                    n_attacks_per_square[r2][f] += 1
                     if board[r2][f] != 0:
                         break
                 ###  left files
                 for f2 in range(f-1, -1, -1):
-                    n_attacks_by_white[r][f2] += 1
+                    n_attacks_per_square[r][f2] += 1
                     if board[r][f2] != 0:
                         break
                 ###  up ranks
                 for r2 in range(r+1, 8):
-                    n_attacks_by_white[r2][f] += 1
-                    if board[r2][f] != 0:
-                        break
-            if (board[r][f] == -4) or (board[r][f] == -5):
-                ###  right files
-                for f2 in range(f+1, 8):
-                    n_attacks_by_black[r][f2] += 1
-                    if board[r][f2] != 0:
-                        break
-                ###  down ranks
-                for r2 in range(r-1, -1, -1):
-                    n_attacks_by_black[r2][f] += 1
-                    if board[r2][f] != 0:
-                        break
-                ###  left files
-                for f2 in range(f-1, -1, -1):
-                    n_attacks_by_black[r][f2] += 1
-                    if board[r][f2] != 0:
-                        break
-                ###  up ranks
-                for r2 in range(r+1, 8):
-                    n_attacks_by_black[r2][f] += 1
+                    n_attacks_per_square[r2][f] += 1
                     if board[r2][f] != 0:
                         break
 
@@ -1084,120 +1063,204 @@ def get_attacked_squares(long[:,:] board):
                 ###  up-right diagonal
                 for d in range(1, 8, 1):
                     if (r+d < 8) and (f+d < 8):
-                        n_attacks_by_white[r+d][f+d] += 1
+                        n_attacks_per_square[r+d][f+d] += 1
                         if board[r+d][f+d] != 0:
                             break
                 ###  down-right diagonal
                 for d in range(1, 8, 1):
                     if (r-d > -1) and (f+d < 8):
-                        n_attacks_by_white[r-d][f+d] += 1
+                        n_attacks_per_square[r-d][f+d] += 1
                         if board[r-d][f+d] != 0:
                             break
                 ###  down-left diagonal
                 for d in range(1, 8, 1):
                     if (r-d > -1) and (f-d > -1):
-                        n_attacks_by_white[r-d][f-d] += 1
+                        n_attacks_per_square[r-d][f-d] += 1
                         if board[r-d][f-d] != 0:
                             break
                 ###  up-left diagonal
                 for d in range(1, 8, 1):
                     if (r+d < 8) and (f-d > -1):
-                        n_attacks_by_white[r+d][f-d] += 1
-                        if board[r+d][f-d] != 0:
-                            break
-            if (board[r][f] == -3) or (board[r][f] == -5):
-                ###  up-right diagonal
-                for d in range(1, 8, 1):
-                    if (r+d < 8) and (f+d < 8):
-                        n_attacks_by_black[r+d][f+d] += 1
-                        if board[r+d][f+d] != 0:
-                            break
-                ###  down-right diagonal
-                for d in range(1, 8, 1):
-                    if (r-d > -1) and (f+d < 8):
-                        n_attacks_by_black[r-d][f+d] += 1
-                        if board[r-d][f+d] != 0:
-                            break
-                ###  down-left diagonal
-                for d in range(1, 8, 1):
-                    if (r-d > -1) and (f-d > -1):
-                        n_attacks_by_black[r-d][f-d] += 1
-                        if board[r-d][f-d] != 0:
-                            break
-                ###  up-left diagonal
-                for d in range(1, 8, 1):
-                    if (r+d < 8) and (f-d > -1):
-                        n_attacks_by_black[r+d][f-d] += 1
+                        n_attacks_per_square[r+d][f-d] += 1
                         if board[r+d][f-d] != 0:
                             break
 
 
             ###  handling attacks by kings
-            if (board[r][f] == 6):
+            if (board[r][f] == 6*player):
                 for r2 in range(r-1, r+2):
                     for f2 in range(f-1, f+2):
                         if (r2 == r) and (f2 == f):
                             pass
                         elif (r2 >= 0) and (r2 <= 7) and (f2 >= 0) and (f2 <= 7):
-                            n_attacks_by_white[r2][f2] += 1
-            if (board[r][f] == -6):
-                for r2 in range(r-1, r+2):
-                    for f2 in range(f-1, f+2):
-                        if (r2 == r) and (f2 == f):
-                            pass
-                        elif (r2 >= 0) and (r2 <= 7) and (f2 >= 0) and (f2 <= 7):
-                            n_attacks_by_black[r2][f2] += 1
+                            n_attacks_per_square[r2][f2] += 1
 
-    return (n_attacks_by_white, n_attacks_by_black)
+    return n_attacks_per_square
 
 
 def move_piece(long[:] move, long[:,:] board):
     '''
+    Parameters
+    ----------
+        move : array of ints
+            Array of moves to be applied where:
+            column 1 : ID of piece is moving
+            column 2 : Start square of piece (e.g. 34 for "c4")
+            column 3 : End square of piece (e.g. 67 for "f7")
+            column 4 : Capture flag (0=False, 1=True, 2=en passant)
+            column 5 : Castling flag (0=False, 100=kingside, 1000=queenside)
+            column 6 : Promotion flag (ID of piece being promoted to)
+
+            Note: 100 represents king-side castling and 1000
+            represents queen-side castling
+
+        board : 2d-array of ints
+            Current layout of chessboard
+            0 = vacant square
+            1, 2, 3, 4, 5, 6 = P, N, B, R, Q, K
+            -1, -2, -3, -4, -5, -6 = p, n, b, r, q, k
+
+    Returns
+    -------
+        new_board : 2d-array of ints
+            Layout of chessboard after piece is moved
+            0 = vacant square
+            1, 2, 3, 4, 5, 6 = P, N, B, R, Q, K
+            -1, -2, -3, -4, -5, -6 = p, n, b, r, q, k
     '''
 
     cdef int piece
     cdef int f_start, r_start, f_end, r_end
+    cdef int[8][8] new_board
+    cdef int i, j
+    for i in range(8):
+        for j in range(8):
+            new_board[i][j] = board[i][j]
 
     ###  parsing start / end squares and piece being moved
     r_start = move[1] % 10 - 1
     f_start = (move[1] - r_start) // 10 - 1
-    piece = board[r_start][f_start]
+    piece = new_board[r_start][f_start]
     r_end = move[2] % 10 - 1
-    f_end = (move[2] - r_start) // 10 - 1
+    f_end = (move[2] - r_end) // 10 - 1
 
 
     ###  if promotion
     if move[5] != 0:
-        board[r_end][f_end] = move[5]
-        board[r_start][f_start] = 0
+        new_board[r_end][f_end] = move[5]
+        new_board[r_start][f_start] = 0
 
     ###  if en passaant
     elif move[3] == 2:
-        board[r_end][f_end] = piece
-        board[r_start][f_start] = 0
-        board[r_end][f_start] = 0
+        new_board[r_end][f_end] = piece
+        new_board[r_start][f_start] = 0
+        new_board[r_end][f_start] = 0
 
     ###  if castling
     elif move[4] == 100:
-        board[r_start][4] = 0
-        board[r_start][5] = 4
-        board[r_start][6] = 6
-        board[r_start][7] = 0
+        new_board[r_start][4] = 0
+        new_board[r_start][5] = 4
+        new_board[r_start][6] = 6
+        new_board[r_start][7] = 0
     elif move[4] == 1000:
-        board[r_start][4] = 0
-        board[r_start][3] = 4
-        board[r_start][2] = 6
-        board[r_start][0] = 0
+        new_board[r_start][4] = 0
+        new_board[r_start][3] = 4
+        new_board[r_start][2] = 6
+        new_board[r_start][0] = 0
 
     ###  else ordinary move
     else:
-        print('moving piece', piece)
-        print('from', f_start, r_start)
-        print('  to', f_end, r_end)
-        board[r_end][f_end] = piece
-        board[r_start][f_start] = 0
+        new_board[r_end][f_end] = piece
+        new_board[r_start][f_start] = 0
 
-    return board
+    return new_board
+
+
+def filter_illegal_moves(long[:,:] candidate_moves, long[:,:] board):
+
+
+    cdef int player = candidate_moves[0][0]
+    cdef int opponent = -player
+    if opponent == 0:
+        print('No candidate moves found... is it checkmate?')
+        return 0
+
+    ###  instantiating arrays indicating attacked squares by opponent
+    cdef int[8][8] n_attacks_by_opp_current_board
+    cdef int[8][8] n_attacks_by_opp_new_board
+    n_attacks_by_opp_current_board = get_attacked_squares(opponent, board)
+
+    ###  locating square occupied by king
+    cdef int r_king, f_king
+    cdef int i, j
+    for i in range(8):
+        for j in range(8):
+            if board[i][j] == 6*player:
+                r_king, f_king = i, j
+                break
+
+    ###  iterating over candidate moves
+    cdef int move_counter = 0
+    cdef int f_start, r_start, f_end, r_end
+    cdef int[200][6] legal_moves
+    for i in range(200):
+        for j in range(6):
+            legal_moves[i][j] = 0
+
+    cdef int[8][8] new_board
+    cdef long[:] move
+    for move in candidate_moves:
+
+        ###  truncate if no more moves
+        if move[0] == 0:
+            break
+
+        ###  parsing start / end squares and piece being moved
+        r_start = move[1] % 10 - 1
+        f_start = (move[1] - r_start) // 10 - 1
+        r_end = move[2] % 10 - 1
+        f_end = (move[2] - r_start) // 10 - 1
+
+        ###  checking for king-side castling
+        if (move[4] == 100) and \
+           (n_attacks_by_opp_current_board[r_end][4] + \
+            n_attacks_by_opp_current_board[r_end][5] + \
+            n_attacks_by_opp_current_board[r_end][6] == 0):
+            for j in range(6):
+                legal_moves[move_counter][j] = move[j]
+            move_counter += 1
+
+        ###  checking for queen-side castling
+        elif (move[4] == 1000) and \
+             (n_attacks_by_opp_current_board[r_end][4] + \
+              n_attacks_by_opp_current_board[r_end][3] + \
+              n_attacks_by_opp_current_board[r_end][2] == 0):
+            for j in range(6):
+                legal_moves[move_counter][j] = move[j]
+            move_counter += 1
+
+        ###  else applying move to board, counting squares attacked by opponent
+        else:
+            new_board = move_piece(move, board)
+            n_attacks_by_opp_new_board = get_attacked_squares(opponent, numpy.array(new_board))
+
+            ###  if piece being moved is not the king, check the king's current location
+            if board[r_start][f_start] != 6*player:
+                if n_attacks_by_opp_new_board[r_king][f_king] == 0:
+                    for j in range(6):
+                        legal_moves[move_counter][j] = move[j]
+                    move_counter += 1
+
+            ###  else check where the king is moving to
+            else:
+                if n_attacks_by_opp_new_board[r_end][f_end] == 0:
+                    for j in range(6):
+                        legal_moves[move_counter][j] = move[j]
+                    move_counter += 1
+
+    return legal_moves
+
+
 
 
 
