@@ -898,7 +898,7 @@ def get_legal_moves(int player_on_move, long[:,:] board, int ep_target, bint get
     for r in range(8):
         for f in range(8):
 
-            if board[r][f] == 1:
+            if board[r][f] == 1*player_on_move:
                 pawn_moves = get_pawn_moves(f, r, player_on_move, board, ep_target)
                 for i in range(12):
                     ###  truncate if there are no more moves
@@ -909,7 +909,7 @@ def get_legal_moves(int player_on_move, long[:,:] board, int ep_target, bint get
                         all_moves[move_counter][j] = pawn_moves[i][j]
                     move_counter += 1
 
-            if board[r][f] == 2:
+            if board[r][f] == 2*player_on_move:
                 knight_moves = get_knight_moves(f, r, player_on_move, board)
                 for i in range(8):
                     ###  truncate if there are no more moves
@@ -920,7 +920,7 @@ def get_legal_moves(int player_on_move, long[:,:] board, int ep_target, bint get
                         all_moves[move_counter][j] = knight_moves[i][j]
                     move_counter += 1
 
-            if board[r][f] == 3:
+            if board[r][f] == 3*player_on_move:
                 bishop_moves = get_bishop_moves(f, r, player_on_move, board)
                 for i in range(13):
                     ###  truncate if there are no more moves
@@ -931,7 +931,7 @@ def get_legal_moves(int player_on_move, long[:,:] board, int ep_target, bint get
                         all_moves[move_counter][j] = bishop_moves[i][j]
                     move_counter += 1
 
-            if board[r][f] == 4:
+            if board[r][f] == 4*player_on_move:
                 rook_moves = get_rook_moves(f, r, player_on_move, board)
                 for i in range(14):
                     ###  truncate if there are no more moves
@@ -942,7 +942,7 @@ def get_legal_moves(int player_on_move, long[:,:] board, int ep_target, bint get
                         all_moves[move_counter][j] = rook_moves[i][j]
                     move_counter += 1
 
-            if board[r][f] == 5:
+            if board[r][f] == 5*player_on_move:
                 queen_moves = get_queen_moves(f, r, player_on_move, board)
                 for i in range(27):
                     ###  truncate if there are no more moves
@@ -953,7 +953,7 @@ def get_legal_moves(int player_on_move, long[:,:] board, int ep_target, bint get
                         all_moves[move_counter][j] = queen_moves[i][j]
                     move_counter += 1
 
-            if board[r][f] == 6:
+            if board[r][f] == 6*player_on_move:
                 king_moves = get_king_moves(f, r, player_on_move, board)
                 for i in range(8):
                     ###  truncate if there are no more moves

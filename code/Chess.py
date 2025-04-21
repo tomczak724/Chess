@@ -429,10 +429,10 @@ class chessBoard(object):
 
         fen_board_position = ''
         n_vacant_files = 0
-        for r in range(8, 0, -1):
+        for r in range(7, -1, -1):
 
             n_vacant = 0
-            for f in range(1, 8+1):
+            for f in range(8):
 
                 ###  if square is empty, increment vacant count
                 if board[r][f] == 0:
@@ -445,7 +445,7 @@ class chessBoard(object):
                         n_vacant = 0
 
                     ###  add piece to FEN string
-                    fen += PIECE_ID_2_CHAR[board[r][f]]
+                    fen_board_position += PIECE_ID_2_CHAR[board[r][f]]
 
             if n_vacant > 0:
                 fen_board_position += '%i' % n_vacant
@@ -491,7 +491,7 @@ class chessBoard(object):
         '''
 
         ###  generating new board position
-        new_board = playground_cython.move_piece(move, board)
+        new_board = playground_cython.move_piece(numpy.array(move), board)
 
         ###  parsing start / end squares and piece being moved
         r_start = move[1] % 10 - 1
@@ -544,7 +544,7 @@ class chessBoard(object):
 
             #self.halfmove_count += 1
 
-            self.chess_boards.append(new_board)
+            self.chess_boards.append(numpy.array(new_board))
             self._redraw_board()
 
         else:
