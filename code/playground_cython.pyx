@@ -1059,7 +1059,7 @@ def get_attacked_squares(int player, long[:,:] board):
 
 
             ###  handling attacks by bishops (and queen)
-            if (board[r][f] == 3) or (board[r][f] == 5):
+            if (board[r][f] == 3*player) or (board[r][f] == 5*player):
                 ###  up-right diagonal
                 for d in range(1, 8, 1):
                     if (r+d < 8) and (f+d < 8):
